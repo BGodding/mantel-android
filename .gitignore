@@ -1,0 +1,28 @@
+*.iml
+.gradle
+/local.properties
+# IDE — Android Studio regenerates all of this; keep it out of the repo.
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Firebase config — contains project identifiers. Each build environment supplies its own.
+/app/google-services.json
+
+# Kotlin compiler daemon logs / caches
+.kotlin
+
+# Release signing — never commit these
+keystore.properties
+*.keystore
+*.jks
+
+# Local deployment config (see secrets.properties.example)
+secrets.properties
+
+# Private design docs — kept locally, not published
+/docs/private/

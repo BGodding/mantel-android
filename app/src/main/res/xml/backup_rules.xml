@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 auto-backup config (android:fullBackupContent). Moot while
+  android:allowBackup="false", but kept consistent with data_extraction_rules.xml:
+  never back up the encrypted credential blob or the local frame cache.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="mantel_secure.xml" />
+    <exclude domain="sharedpref" path="mantel_cache.xml" />
+</full-backup-content>

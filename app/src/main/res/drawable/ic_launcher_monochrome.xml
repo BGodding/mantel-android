@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Single-tint silhouette: picture-frame outline + an upload arrow
+         rising through it. Monochrome layers ignore colour, so this is
+         just union coverage in one tone. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M35,23 h38 a9,9 0 0 1 9,9 v30 a9,9 0 0 1 -9,9 h-38 a9,9 0 0 1 -9,-9 v-30 a9,9 0 0 1 9,-9 z M37,30 h34 a3,3 0 0 1 3,3 v20 a3,3 0 0 1 -3,3 h-34 a3,3 0 0 1 -3,-3 v-20 a3,3 0 0 1 3,-3 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M46,84 L46,66 L36,66 L54,46 L72,66 L62,66 L62,84 z" />
+</vector>

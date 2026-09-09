@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cloud backup is already off (android:allowBackup="false"), but device-to-device
+  transfer (Android 12+) is a separate channel governed here. Keep the encrypted
+  credential blob and the local frame cache off it. (The Keystore key is
+  device-bound and does not transfer, so a copied blob is already useless on the
+  target device — this is defence in depth.) The staging cache lives under
+  cacheDir, which Android never backs up or transfers.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="mantel_secure.xml" />
+        <exclude domain="sharedpref" path="mantel_cache.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="mantel_secure.xml" />
+        <exclude domain="sharedpref" path="mantel_cache.xml" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Explicit trust model, applied to all traffic: no cleartext anywhere, and only
+  the system CA store is trusted — user-installed CAs are ignored, closing the
+  "someone has a MITM proxy CA installed" hole.
+
+  The app talks to exactly one host; which host is a build-time value
+  (secrets.properties -> BuildConfig.BASE_URL) further constrained at runtime by
+  Config.isAllowed()'s allowlist, so there's no host-specific block here.
+
+  Certificate pinning is intentionally NOT configured — see docs/security.md for
+  the rationale and a ready-to-use <pin-set> block if the threat model changes.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Debug builds only: allow a locally-trusted proxy CA for traffic inspection. -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
