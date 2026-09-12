@@ -9,6 +9,14 @@ val secrets = Properties().apply {
     (if (real.exists()) real else example).inputStream().use { load(it) }
 }
 
+// Release signing: gitignored, not committed, no fallback — a release build
+// without it fails with a clear "signing config not set up" error rather than
+// silently producing an unsigned APK. See docs/security.md, owner action #2.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -55,6 +63,17 @@ android {
         )
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Skip mapping-file upload for local builds — it just slows them down.
@@ -63,9 +82,15 @@ android {
             }
         }
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
-                enable = false
+                enable = true
             }
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // Upload the deobfuscation mapping so release stack traces are readable.
             configure<CrashlyticsExtension> {
                 mappingFileUploadEnabled = true

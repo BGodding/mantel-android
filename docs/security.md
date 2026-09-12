@@ -61,9 +61,17 @@ A lower-maintenance alternative is enforcing Certificate Transparency instead of
 
 ## Owner actions still needed
 
-### 2. Release signing + code shrinking
+### 2. Release signing + code shrinking — ✅ done (Sept 2026)
 
-Release builds are currently unsigned and un-minified.
+`app/build.gradle.kts` has `signingConfigs.release` reading a gitignored `keystore.properties`,
+and `buildTypes.release` has R8 (`optimization { enable = true }`) and `isShrinkResources = true`
+on, with `proguard-rules.pro`. Verified: `assembleRelease` produces a real signed APK —
+`apksigner verify` confirms one signer, RSA 4096-bit, APK Signature Scheme v2 — and
+`app/build/outputs/mapping/release/` has a full R8 mapping. **Not yet done:** the
+end-to-end smoke test of the shrunk build (login/discovery/upload/gallery) called out below,
+and confirming a symbolicated crash shows up in the Crashlytics console.
+
+Steps below are kept for reference / rebuilding on a new machine.
 
 **Create a signing key** (keep it and its passwords in a password manager / secrets store —
 losing it means you can never update the app):
@@ -129,8 +137,18 @@ android {
 "Android key (auto created by Firebase)":
 - *Application restrictions* → **Android apps** → add package `com.eeinspired.mantel`
   with the **release** signing SHA-256 (and the debug SHA-256 while developing).
-- *API restrictions* → restrict to only: Firebase Installations API, Firebase Remote Config
-  API, Firebase Crashlytics API, Google Analytics for Firebase API. Remove everything else.
+- *API restrictions* → restrict to only: **Firebase Installations API**, **Firebase Remote
+  Config API**, **Token Service API**. Remove everything else.
+  (As of Sept 2026 the console's API-restriction dropdown only offers the APIs enabled on
+  the project, and neither "Firebase Crashlytics API" nor "Google Analytics for Firebase API"
+  appear in it — Crashlytics report upload and Analytics event collection don't go through a
+  googleapis.com endpoint gated by this Android key, so they aren't affected by the
+  restriction either way. Installations backs all three SDKs (Crashlytics, Analytics, Remote
+  Config) for device identity; Remote Config is the explicit `fetch()` call in
+  `RemoteFlags.kt`; Token Service is the STS token exchange Installations relies on. The app
+  uses no other Firebase-gated API — no FCM (no `FirebaseMessaging`), no Firebase Auth (no
+  `Identity Toolkit API`), no Firestore/Storage/Hosting/ML/App Check — so nothing else from
+  the project's enabled-API list belongs on the key.)
 
 **Trim analytics collection.** Add to `AndroidManifest.xml` `<application>`:
 
