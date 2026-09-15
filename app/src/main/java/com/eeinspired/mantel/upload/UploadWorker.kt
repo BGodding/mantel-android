@@ -52,7 +52,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         runCatching { setForeground(getForegroundInfo()) } // ignored if bg-start is disallowed
 
         val finalUrl = collectionUrl.trimEnd('/') + "/" + encodePathSegment(displayName)
-        val chunked = size < 0 || size >= SIMPLE_UPLOAD_MAX_BYTES
+        val chunked = size !in 0 until SIMPLE_UPLOAD_MAX_BYTES
         val client = NextcloudClient(baseUrl)
 
         val result = if (chunked) {

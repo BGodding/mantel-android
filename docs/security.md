@@ -133,6 +133,16 @@ android {
 
 ### 3. Firebase lockdown
 
+**Trim analytics collection — ✅ done (Sept 2026).** `AndroidManifest.xml` now explicitly
+`tools:node="remove"`s `com.google.android.gms.permission.AD_ID`,
+`android.permission.ACCESS_ADSERVICES_ATTRIBUTION`, and
+`android.permission.ACCESS_ADSERVICES_AD_ID` — all three are merged in by
+`play-services-measurement` (Firebase Analytics) by default for optional ad-personalization
+features Mantel doesn't use (no ads, no remarketing). Verified absent from
+`processReleaseMainManifest`'s merged manifest. The two `google_analytics_*` meta-data flags
+below are also in place. **Not yet done:** the Firebase console retention/Google-signals
+settings called out below, and the API key restriction.
+
 **Restrict the API key.** Google Cloud console → *APIs & Services → Credentials* → the
 "Android key (auto created by Firebase)":
 - *Application restrictions* → **Android apps** → add package `com.eeinspired.mantel`
