@@ -18,8 +18,11 @@ object Messages {
         "No connection — check your network and try again."
 
     fun serverError(code: Int): String =
-        if (code > 0) "Server error ($code) — try again in a moment."
-        else "The server sent something unexpected — try again in a moment."
+        if (code > 0) {
+            "Server error ($code) — try again in a moment."
+        } else {
+            "The server sent something unexpected — try again in a moment."
+        }
 
     /** Maps an [com.eeinspired.mantel.upload.UploadWorker] error kind to user copy. */
     fun uploadError(kind: String?): String = when (kind) {

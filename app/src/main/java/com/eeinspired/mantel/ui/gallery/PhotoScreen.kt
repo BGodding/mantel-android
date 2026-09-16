@@ -48,20 +48,11 @@ fun PhotoScreen(
     Scaffold(
         containerColor = Color.Black,
         topBar = {
-            TopAppBar(
-                title = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back", color = Color.White) } },
-                actions = {
-                    if (canDelete) {
-                        TextButton(onClick = { confirming = true }) {
-                            Text("Delete", color = Color.White)
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
-                    titleContentColor = Color.White,
-                ),
+            PhotoTopBar(
+                title = item.name,
+                canDelete = canDelete,
+                onBack = onBack,
+                onDeleteRequested = { confirming = true },
             )
         },
     ) { innerPadding ->
@@ -99,25 +90,50 @@ fun PhotoScreen(
                 busy = true
                 error = null
                 scope.launch {
-                    when (val result = repo.deleteItem(item)) {
-                        DeleteOutcome.Success, DeleteOutcome.AlreadyGone -> {
-                            onDeleted()
-                            return@launch
-                        }
-                        DeleteOutcome.SessionExpired -> {
-                            onSignedOut(Messages.SESSION_REVOKED)
-                            return@launch
-                        }
-                        DeleteOutcome.Forbidden ->
-                            error = "You don't have permission to remove photos from this frame."
-                        DeleteOutcome.Unreachable -> error = Messages.NO_CONNECTION
-                        is DeleteOutcome.ServerProblem -> error = Messages.serverError(result.code)
+                    val failure = performDelete(repo, item, onDeleted, onSignedOut)
+                    if (failure != null) {
+                        error = failure
+                        busy = false
+                        confirming = false
                     }
-                    busy = false
-                    confirming = false
                 }
             },
             onDismiss = { if (!busy) confirming = false },
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhotoTopBar(title: String, canDelete: Boolean, onBack: () -> Unit, onDeleteRequested: () -> Unit) {
+    TopAppBar(
+        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = { TextButton(onClick = onBack) { Text("Back", color = Color.White) } },
+        actions = {
+            if (canDelete) {
+                TextButton(onClick = onDeleteRequested) { Text("Delete", color = Color.White) }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White),
+    )
+}
+
+/** Returns null on success (and has already called [onDeleted]/[onSignedOut]), or an error message. */
+private suspend fun performDelete(
+    repo: SessionRepository,
+    item: RemoteItem,
+    onDeleted: () -> Unit,
+    onSignedOut: (String) -> Unit,
+): String? = when (val result = repo.deleteItem(item)) {
+    DeleteOutcome.Success, DeleteOutcome.AlreadyGone -> {
+        onDeleted()
+        null
+    }
+    DeleteOutcome.SessionExpired -> {
+        onSignedOut(Messages.SESSION_REVOKED)
+        null
+    }
+    DeleteOutcome.Forbidden -> "You don't have permission to remove photos from this frame."
+    DeleteOutcome.Unreachable -> Messages.NO_CONNECTION
+    is DeleteOutcome.ServerProblem -> Messages.serverError(result.code)
 }

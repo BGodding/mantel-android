@@ -80,27 +80,12 @@ fun LoginScreen(
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
+        PasswordField(
             value = appPassword,
             onValueChange = { appPassword = it; error = null },
-            label = { Text("App password") },
-            singleLine = true,
             enabled = !busy,
-            visualTransformation = if (passwordVisible) {
-                VisualTransformation.None
-            } else {
-                PasswordVisualTransformation()
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
+            visible = passwordVisible,
+            onToggleVisible = { passwordVisible = !passwordVisible },
         )
 
         error?.let {
@@ -116,12 +101,7 @@ fun LoginScreen(
                 busy = true
                 error = null
                 scope.launch {
-                    when (val outcome = repo.logIn(username, appPassword)) {
-                        is LoginOutcome.Success -> onAuthenticated()
-                        LoginOutcome.InvalidCredentials -> error = Messages.INVALID_CREDENTIALS
-                        LoginOutcome.Unreachable -> error = Messages.NO_CONNECTION
-                        is LoginOutcome.ServerProblem -> error = Messages.serverError(outcome.code)
-                    }
+                    error = attemptLogin(repo, username, appPassword, onAuthenticated)
                     busy = false
                 }
             },
@@ -138,4 +118,48 @@ fun LoginScreen(
             }
         }
     }
+}
+
+@Composable
+private fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    visible: Boolean,
+    onToggleVisible: () -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text("App password") },
+        singleLine = true,
+        enabled = enabled,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        trailingIcon = {
+            IconButton(onClick = onToggleVisible) {
+                Icon(
+                    imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (visible) "Hide password" else "Show password",
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** Returns null on success (and has already called [onAuthenticated]), or an error message. */
+private suspend fun attemptLogin(
+    repo: SessionRepository,
+    username: String,
+    appPassword: String,
+    onAuthenticated: () -> Unit,
+): String? = when (val outcome = repo.logIn(username, appPassword)) {
+    is LoginOutcome.Success -> {
+        onAuthenticated()
+        null
+    }
+    LoginOutcome.InvalidCredentials -> Messages.INVALID_CREDENTIALS
+    LoginOutcome.Unreachable -> Messages.NO_CONNECTION
+    is LoginOutcome.ServerProblem -> Messages.serverError(outcome.code)
 }
