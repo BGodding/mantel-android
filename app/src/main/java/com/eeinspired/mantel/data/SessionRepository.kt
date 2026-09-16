@@ -3,6 +3,8 @@ package com.eeinspired.mantel.data
 import android.content.Context
 import androidx.core.content.edit
 import com.eeinspired.mantel.telemetry.Telemetry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -216,7 +218,7 @@ class SessionRepository(context: Context) {
             ?: store.load()?.also { credentials = it }
             ?: return DeleteOutcome.SessionExpired
 
-        val outcome = when (val result = client.deleteItem(creds, item.href)) {
+        val outcome = when (val result = withContext(Dispatchers.IO) { client.deleteItem(creds, item.href) }) {
             UploadResult.Success -> DeleteOutcome.Success
             UploadResult.Unauthorized -> {
                 logOut()

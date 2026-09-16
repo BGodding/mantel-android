@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,8 +42,8 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import com.eeinspired.mantel.data.DeleteOutcome
-import com.eeinspired.mantel.data.FolderOutcome
 import com.eeinspired.mantel.data.Destination
+import com.eeinspired.mantel.data.FolderOutcome
 import com.eeinspired.mantel.data.Messages
 import com.eeinspired.mantel.data.RemoteItem
 import com.eeinspired.mantel.data.SessionRepository
@@ -93,59 +93,25 @@ fun GalleryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(destination.displayName) },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
-                actions = { TextButton(onClick = { load() }, enabled = !loading) { Text("Refresh") } },
+            GalleryTopBar(
+                title = destination.displayName,
+                loading = loading,
+                onBack = onBack,
+                onRefresh = { load() },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            notice?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-            if (loadedOnce && items.isNotEmpty()) {
-                Text(
-                    text = "${items.size} ${if (items.size == 1) "item" else "items"}" +
-                        if (canDelete) " · long-press to remove" else "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-
-            when {
-                loading && items.isEmpty() ->
-                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-
-                items.isEmpty() && loadedOnce ->
-                    Text(
-                        text = "This frame has no photos yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp),
-                    )
-
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(110.dp),
-                    contentPadding = PaddingValues(12.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(items, key = { it.href }) { item ->
-                        GalleryTile(
-                            item = item,
-                            onClick = { onOpenItem(item) },
-                            onLongClick = if (canDelete) ({ pendingDelete = item }) else null,
-                        )
-                    }
-                }
-            }
-        }
+        GalleryContent(
+            innerPadding = innerPadding,
+            notice = notice,
+            loading = loading,
+            loadedOnce = loadedOnce,
+            items = items,
+            canDelete = canDelete,
+            onOpenItem = onOpenItem,
+            onRequestDelete = { pendingDelete = it },
+        )
     }
 
     pendingDelete?.let { target ->
@@ -156,28 +122,101 @@ fun GalleryScreen(
             onConfirm = {
                 deleteBusy = true
                 scope.launch {
-                    when (val result = repo.deleteItem(target)) {
-                        DeleteOutcome.Success, DeleteOutcome.AlreadyGone -> {
-                            items.remove(target)
-                            snackbar.showSnackbar("Removed \"${target.name}\".")
-                        }
-                        DeleteOutcome.SessionExpired -> {
-                            onSignedOut(Messages.SESSION_REVOKED)
-                            return@launch
-                        }
-                        DeleteOutcome.Forbidden ->
-                            snackbar.showSnackbar("You don't have permission to remove photos from this frame.")
-                        DeleteOutcome.Unreachable ->
-                            snackbar.showSnackbar(Messages.NO_CONNECTION)
-                        is DeleteOutcome.ServerProblem ->
-                            snackbar.showSnackbar(Messages.serverError(result.code))
-                    }
+                    performDelete(repo, target, items, snackbar, onSignedOut)
                     deleteBusy = false
                     pendingDelete = null
                 }
             },
             onDismiss = { if (!deleteBusy) pendingDelete = null },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GalleryTopBar(title: String, loading: Boolean, onBack: () -> Unit, onRefresh: () -> Unit) {
+    TopAppBar(
+        title = { Text(title) },
+        navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+        actions = { TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") } },
+    )
+}
+
+@Composable
+private fun GalleryContent(
+    innerPadding: PaddingValues,
+    notice: String?,
+    loading: Boolean,
+    loadedOnce: Boolean,
+    items: List<RemoteItem>,
+    canDelete: Boolean,
+    onOpenItem: (RemoteItem) -> Unit,
+    onRequestDelete: (RemoteItem) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        notice?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        if (loadedOnce && items.isNotEmpty()) {
+            Text(
+                text = "${items.size} ${if (items.size == 1) "item" else "items"}" +
+                    if (canDelete) " · long-press to remove" else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        when {
+            loading && items.isEmpty() ->
+                Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+
+            items.isEmpty() && loadedOnce ->
+                Text(
+                    text = "This frame has no photos yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+
+            else -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(110.dp),
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(items, key = { it.href }) { item ->
+                    GalleryTile(
+                        item = item,
+                        onClick = { onOpenItem(item) },
+                        onLongClick = if (canDelete) ({ onRequestDelete(item) }) else null,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private suspend fun performDelete(
+    repo: SessionRepository,
+    item: RemoteItem,
+    items: MutableList<RemoteItem>,
+    snackbar: SnackbarHostState,
+    onSignedOut: (String) -> Unit,
+) {
+    when (val result = repo.deleteItem(item)) {
+        DeleteOutcome.Success, DeleteOutcome.AlreadyGone -> {
+            items.remove(item)
+            snackbar.showSnackbar("Removed \"${item.name}\".")
+        }
+        DeleteOutcome.SessionExpired -> onSignedOut(Messages.SESSION_REVOKED)
+        DeleteOutcome.Forbidden ->
+            snackbar.showSnackbar("You don't have permission to remove photos from this frame.")
+        DeleteOutcome.Unreachable -> snackbar.showSnackbar(Messages.NO_CONNECTION)
+        is DeleteOutcome.ServerProblem -> snackbar.showSnackbar(Messages.serverError(result.code))
     }
 }
 

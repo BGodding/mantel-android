@@ -26,3 +26,6 @@ secrets.properties
 
 # Private design docs — kept locally, not published
 /docs/private/
+
+# Generated Play Store listing assets — not app source, kept locally for upload
+/play-store-assets/

@@ -2,6 +2,7 @@ package com.eeinspired.mantel
 
 import android.Manifest
 import android.content.ContentResolver
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -134,11 +135,7 @@ private fun FrameUploaderApp(
     var galleryDestination by remember { mutableStateOf<Destination?>(null) }
     var viewerItem by remember { mutableStateOf<RemoteItem?>(null) }
 
-    LaunchedEffect(Unit) {
-        flags = RemoteFlags.load(context) // also caches server_base_url for next launch
-        Telemetry.setKey("flag_gallery", flags.galleryEnabled)
-        Telemetry.setKey("flag_delete", flags.deleteEnabled)
-    }
+    LoadFlagsEffect(context) { flags = it }
 
     // In-app Back: step back through the screen stack instead of leaving the app.
     // Null on the root screens (destinations / login / loading) — there the OS default wins.
@@ -152,28 +149,13 @@ private fun FrameUploaderApp(
     }
     BackHandler(enabled = goBack != null) { goBack?.invoke() }
 
-    val screenName = when {
-        screen is Screen.Loading -> "loading"
-        screen is Screen.Login -> "login"
-        viewerItem != null -> "viewer"
-        galleryDestination != null -> "gallery"
-        batchTag != null -> "upload_status"
-        pending.isNotEmpty() -> "pick_destination"
-        else -> "destinations"
-    }
-    LaunchedEffect(screenName) {
-        Telemetry.setKey("screen", screenName)
-        Telemetry.breadcrumb("nav → $screenName")
-    }
+    NavigationTelemetry(screen, viewerItem, galleryDestination, batchTag, pending)
 
-    LaunchedEffect(sharedUris) {
-        if (sharedUris.isNotEmpty()) {
-            pending = sharedUris
-            batchTag = null
-            galleryDestination = null
-            viewerItem = null
-            onSharedUrisConsumed()
-        }
+    ConsumeSharedUris(sharedUris, onSharedUrisConsumed) { uris ->
+        pending = uris
+        batchTag = null
+        galleryDestination = null
+        viewerItem = null
     }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -188,16 +170,7 @@ private fun FrameUploaderApp(
         ActivityResultContracts.RequestPermission(),
     ) { /* upload proceeds whether or not it's granted */ }
 
-    LaunchedEffect(Unit) {
-        screen = when (val result = repo.bootstrap()) {
-            Bootstrap.NeedsLogin -> Screen.Login(null)
-            is Bootstrap.Revoked -> Screen.Login(result.message)
-            is Bootstrap.Ready -> {
-                bootNotice = result.offlineNotice
-                Screen.Ready
-            }
-        }
-    }
+    BootstrapEffect(repo, onLogin = { screen = Screen.Login(it) }, onReady = { bootNotice = it; screen = Screen.Ready })
 
     fun signOut(message: String) {
         pending = emptyList()
@@ -216,63 +189,151 @@ private fun FrameUploaderApp(
             onAuthenticated = { screen = Screen.Ready },
         )
 
-        Screen.Ready -> {
-            val destination = galleryDestination
-            val item = viewerItem
-            val tag = batchTag
-            when {
-                destination != null && item != null -> PhotoScreen(
-                    destination = destination,
-                    item = item,
-                    repo = repo,
-                    canDelete = flags.deleteEnabled && destination.canDelete,
-                    onDeleted = { viewerItem = null },
-                    onBack = { viewerItem = null },
-                    onSignedOut = ::signOut,
-                )
+        Screen.Ready -> ReadyContent(
+            repo = repo,
+            flags = flags,
+            bootNotice = bootNotice,
+            pending = pending,
+            galleryDestination = galleryDestination,
+            viewerItem = viewerItem,
+            batchTag = batchTag,
+            onPickPhotos = {
+                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            },
+            onDestinationPicked = { picked ->
+                val user = repo.username
+                val toSend = pending
+                if (user != null && toSend.isNotEmpty()) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    repo.lastDestinationId = picked.id
+                    scope.launch { batchTag = UploadEnqueuer.enqueue(context, picked, user, toSend).tag }
+                }
+            },
+            onOpenDestination = { galleryDestination = it },
+            onOpenItem = { viewerItem = it },
+            onGalleryBack = { galleryDestination = null },
+            onViewerBack = { viewerItem = null },
+            onItemDeleted = { viewerItem = null },
+            onUploadDone = { batchTag = null; pending = emptyList() },
+            onSignedOut = ::signOut,
+        )
+    }
+}
 
-                destination != null -> GalleryScreen(
-                    destination = destination,
-                    repo = repo,
-                    canDelete = flags.deleteEnabled && destination.canDelete,
-                    onOpenItem = { viewerItem = it },
-                    onBack = { galleryDestination = null },
-                    onSignedOut = ::signOut,
-                )
+/** [Screen.Ready]'s content: routes to whichever of the four post-login screens applies. */
+@Composable
+private fun ReadyContent(
+    repo: SessionRepository,
+    flags: FlagSnapshot,
+    bootNotice: String?,
+    pending: List<Uri>,
+    galleryDestination: Destination?,
+    viewerItem: RemoteItem?,
+    batchTag: String?,
+    onPickPhotos: () -> Unit,
+    onDestinationPicked: (Destination) -> Unit,
+    onOpenDestination: (Destination) -> Unit,
+    onOpenItem: (RemoteItem) -> Unit,
+    onGalleryBack: () -> Unit,
+    onViewerBack: () -> Unit,
+    onItemDeleted: () -> Unit,
+    onUploadDone: () -> Unit,
+    onSignedOut: (String) -> Unit,
+) {
+    when {
+        galleryDestination != null && viewerItem != null -> PhotoScreen(
+            destination = galleryDestination,
+            item = viewerItem,
+            repo = repo,
+            canDelete = flags.deleteEnabled && galleryDestination.canDelete,
+            onDeleted = onItemDeleted,
+            onBack = onViewerBack,
+            onSignedOut = onSignedOut,
+        )
 
-                tag != null -> UploadStatusScreen(
-                    batchTag = tag,
-                    onDone = {
-                        batchTag = null
-                        pending = emptyList()
-                    },
-                )
+        galleryDestination != null -> GalleryScreen(
+            destination = galleryDestination,
+            repo = repo,
+            canDelete = flags.deleteEnabled && galleryDestination.canDelete,
+            onOpenItem = onOpenItem,
+            onBack = onGalleryBack,
+            onSignedOut = onSignedOut,
+        )
 
-                else -> DestinationsScreen(
-                    repo = repo,
-                    pendingCount = pending.size,
-                    initialNotice = bootNotice,
-                    galleryEnabled = flags.galleryEnabled,
-                    onChoosePhotos = {
-                        photoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
-                        )
-                    },
-                    onDestinationPicked = { picked ->
-                        val user = repo.username
-                        val toSend = pending
-                        if (user != null && toSend.isNotEmpty()) {
-                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            repo.lastDestinationId = picked.id
-                            scope.launch {
-                                batchTag = UploadEnqueuer.enqueue(context, picked, user, toSend).tag
-                            }
-                        }
-                    },
-                    onOpenDestination = { galleryDestination = it },
-                    onSignedOut = ::signOut,
-                )
-            }
+        batchTag != null -> UploadStatusScreen(batchTag = batchTag, onDone = onUploadDone)
+
+        else -> DestinationsScreen(
+            repo = repo,
+            pendingCount = pending.size,
+            initialNotice = bootNotice,
+            galleryEnabled = flags.galleryEnabled,
+            onChoosePhotos = onPickPhotos,
+            onDestinationPicked = onDestinationPicked,
+            onOpenDestination = onOpenDestination,
+            onSignedOut = onSignedOut,
+        )
+    }
+}
+
+private fun screenNameFor(
+    screen: Screen,
+    viewerItem: RemoteItem?,
+    galleryDestination: Destination?,
+    batchTag: String?,
+    pending: List<Uri>,
+): String = when {
+    screen is Screen.Loading -> "loading"
+    screen is Screen.Login -> "login"
+    viewerItem != null -> "viewer"
+    galleryDestination != null -> "gallery"
+    batchTag != null -> "upload_status"
+    pending.isNotEmpty() -> "pick_destination"
+    else -> "destinations"
+}
+
+/** Loads feature flags once per launch (also caches `server_base_url` for next launch). */
+@Composable
+private fun LoadFlagsEffect(context: Context, onLoaded: (FlagSnapshot) -> Unit) {
+    LaunchedEffect(Unit) {
+        val loaded = RemoteFlags.load(context)
+        Telemetry.setKey("flag_gallery", loaded.galleryEnabled)
+        Telemetry.setKey("flag_delete", loaded.deleteEnabled)
+        onLoaded(loaded)
+    }
+}
+
+@Composable
+private fun NavigationTelemetry(
+    screen: Screen,
+    viewerItem: RemoteItem?,
+    galleryDestination: Destination?,
+    batchTag: String?,
+    pending: List<Uri>,
+) {
+    val screenName = screenNameFor(screen, viewerItem, galleryDestination, batchTag, pending)
+    LaunchedEffect(screenName) {
+        Telemetry.setKey("screen", screenName)
+        Telemetry.breadcrumb("nav → $screenName")
+    }
+}
+
+@Composable
+private fun ConsumeSharedUris(sharedUris: List<Uri>, onConsumed: () -> Unit, onPending: (List<Uri>) -> Unit) {
+    LaunchedEffect(sharedUris) {
+        if (sharedUris.isNotEmpty()) {
+            onPending(sharedUris)
+            onConsumed()
+        }
+    }
+}
+
+@Composable
+private fun BootstrapEffect(repo: SessionRepository, onLogin: (String?) -> Unit, onReady: (String?) -> Unit) {
+    LaunchedEffect(Unit) {
+        when (val result = repo.bootstrap()) {
+            Bootstrap.NeedsLogin -> onLogin(null)
+            is Bootstrap.Revoked -> onLogin(result.message)
+            is Bootstrap.Ready -> onReady(result.offlineNotice)
         }
     }
 }

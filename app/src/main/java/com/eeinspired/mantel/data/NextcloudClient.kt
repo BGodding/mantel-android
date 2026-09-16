@@ -35,11 +35,11 @@ sealed interface ApiResult<out T> {
 /** Outcome of a WebDAV upload step, shaped to Requirements §7 / API Contract §5. */
 sealed interface UploadResult {
     data object Success : UploadResult
-    data object Unauthorized : UploadResult          // 401 — re-login, never retry
-    data object Forbidden : UploadResult             // 403 — permission / name collision, never retry
-    data object DestinationMissing : UploadResult    // 404 — share revoked since last refresh
-    data object QuotaExceeded : UploadResult         // 507 — server full, never retry
-    data class ServerError(val code: Int) : UploadResult  // 5xx — retry with backoff
+    data object Unauthorized : UploadResult // 401 — re-login, never retry
+    data object Forbidden : UploadResult // 403 — permission / name collision, never retry
+    data object DestinationMissing : UploadResult // 404 — share revoked since last refresh
+    data object QuotaExceeded : UploadResult // 507 — server full, never retry
+    data class ServerError(val code: Int) : UploadResult // 5xx — retry with backoff
     data class Network(val cause: Throwable) : UploadResult // no response — retry with backoff
 }
 
@@ -174,32 +174,12 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
         if (mkcol != UploadResult.Success) return mkcol
 
         return try {
-            openStream().use { input ->
-                var index = 0L
-                while (true) {
-                    val chunk = input.readNBytes(CHUNK_SIZE_BYTES)
-                    if (chunk.isEmpty()) break
-                    val name = index.toString().padStart(CHUNK_NAME_WIDTH, '0')
-                    val body = chunk.toRequestBody(OCTET_STREAM, 0, chunk.size)
-                    val step = runCall {
-                        http.newCall(authed("$stagingRoot/$name", creds).put(body).build())
-                            .execute().use(::classify)
-                    }
-                    if (step != UploadResult.Success) {
-                        bestEffortDelete(stagingRoot, creds)
-                        return step
-                    }
-                    index++
-                    if (chunk.size < CHUNK_SIZE_BYTES) break
-                }
+            val chunkFailure = putChunks(stagingRoot, creds, openStream)
+            if (chunkFailure != null) {
+                bestEffortDelete(stagingRoot, creds)
+                return chunkFailure
             }
-            val move = authed("$stagingRoot/.file", creds)
-                .header("Destination", finalUrl)
-                .header("OC-Total-Length", totalBytes.toString())
-                .apply { if (mtimeSeconds != null) header("X-OC-Mtime", mtimeSeconds.toString()) }
-                .method("MOVE", null)
-                .build()
-            val assembled = runCall { http.newCall(move).execute().use(::classify) }
+            val assembled = moveAssembled(stagingRoot, finalUrl, mtimeSeconds, totalBytes, creds)
             if (assembled != UploadResult.Success) bestEffortDelete(stagingRoot, creds)
             assembled
         } catch (e: IOException) {
@@ -208,16 +188,57 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
         }
     }
 
+    /** PUTs every chunk in order; returns null once all succeed, or the first failure. */
+    private fun putChunks(
+        stagingRoot: String,
+        creds: Credentials,
+        openStream: () -> InputStream,
+    ): UploadResult? {
+        openStream().use { input ->
+            var index = 0L
+            for (chunk in readChunks(input)) {
+                val name = index.toString().padStart(CHUNK_NAME_WIDTH, '0')
+                val body = chunk.toRequestBody(OCTET_STREAM, 0, chunk.size)
+                val step = runCall {
+                    http.newCall(authed("$stagingRoot/$name", creds).put(body).build())
+                        .execute().use(::classify)
+                }
+                if (step != UploadResult.Success) return step
+                index++
+            }
+        }
+        return null
+    }
+
+    /** Lazily reads fixed-size chunks until [input] is exhausted (a short/empty read ends it). */
+    private fun readChunks(input: InputStream): Sequence<ByteArray> =
+        generateSequence { input.readNBytes(CHUNK_SIZE_BYTES).takeIf { it.isNotEmpty() } }
+
+    private fun moveAssembled(
+        stagingRoot: String,
+        finalUrl: String,
+        mtimeSeconds: Long?,
+        totalBytes: Long,
+        creds: Credentials,
+    ): UploadResult {
+        val move = authed("$stagingRoot/.file", creds)
+            .header("Destination", finalUrl)
+            .header("OC-Total-Length", totalBytes.toString())
+            .apply { if (mtimeSeconds != null) header("X-OC-Mtime", mtimeSeconds.toString()) }
+            .method("MOVE", null)
+            .build()
+        return runCall { http.newCall(move).execute().use(::classify) }
+    }
+
     private fun bestEffortDelete(url: String, creds: Credentials) {
         val result = runCatching {
             http.newCall(authed(url, creds).delete().build()).execute().use { it.code }
         }
         val code = result.getOrNull()
-        if (result.isFailure || (code != null && code !in 200..299 && code != 404)) {
+        if (isOrphanedCleanup(result, code)) {
             // Staging collection may be orphaned server-side (API Contract §4).
-            Telemetry.recordNonFatal(
-                IllegalStateException("orphaned upload staging: cleanup returned ${code ?: result.exceptionOrNull()?.javaClass?.simpleName}"),
-            )
+            val reason = code ?: result.exceptionOrNull()?.javaClass?.simpleName
+            Telemetry.recordNonFatal(IllegalStateException("orphaned upload staging: cleanup returned $reason"))
         }
     }
 
@@ -272,76 +293,19 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
             setInput(stream, null)
         }
         val items = mutableListOf<RemoteItem>()
-
-        var href: String? = null
-        var isDir = false
-        var contentType = ""
-        var size = 0L
-        var lastModified = 0L
-        var fileId: String? = null
-        var hasPreview = false
+        val entry = PropfindEntry()
 
         // "Not found" propstat blocks carry only self-closing empty prop elements, so
         // `parser.next() == TEXT` never fires for them — no need to track propstat status.
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
-            if (event == XmlPullParser.START_TAG) {
-                when (parser.name?.substringAfterLast(':')?.lowercase()) {
-                    "response" -> {
-                        href = null; isDir = false; contentType = ""; size = 0L
-                        lastModified = 0L; fileId = null; hasPreview = false
-                    }
-                    "href" -> if (parser.next() == XmlPullParser.TEXT) href = parser.text?.trim()
-                    "collection" -> isDir = true
-                    "getcontenttype" -> if (parser.next() == XmlPullParser.TEXT) {
-                        contentType = parser.text?.trim().orEmpty()
-                    }
-                    "getcontentlength" -> if (parser.next() == XmlPullParser.TEXT) {
-                        size = parser.text?.trim()?.toLongOrNull() ?: 0L
-                    }
-                    "getlastmodified" -> if (parser.next() == XmlPullParser.TEXT) {
-                        lastModified = parseHttpDate(parser.text?.trim())
-                    }
-                    "fileid" -> if (parser.next() == XmlPullParser.TEXT) fileId = parser.text?.trim()
-                    "has-preview" -> if (parser.next() == XmlPullParser.TEXT) {
-                        hasPreview = parser.text?.trim().equals("true", ignoreCase = true)
-                    }
-                }
-            } else if (event == XmlPullParser.END_TAG &&
-                parser.name?.substringAfterLast(':')?.lowercase() == "response"
-            ) {
-                val h = href
-                if (h != null && !isDir && !samePath(h, selfPath)) {
-                    items += RemoteItem(
-                        href = h,
-                        name = decodeName(h),
-                        isDirectory = false,
-                        contentType = contentType,
-                        sizeBytes = size,
-                        lastModifiedEpochSeconds = lastModified,
-                        fileId = fileId,
-                        hasPreview = hasPreview,
-                    )
-                }
+            when (event) {
+                XmlPullParser.START_TAG -> applyPropfindStartTag(parser, entry)
+                XmlPullParser.END_TAG -> collectPropfindResponse(parser, entry, selfPath, items)
             }
             event = parser.next()
         }
         return items.sortedByDescending { it.lastModifiedEpochSeconds }
-    }
-
-    private fun samePath(hrefA: String, hrefB: String): Boolean =
-        hrefA.trimEnd('/').substringAfter("://").substringAfter('/') ==
-            hrefB.trimEnd('/').substringAfter("://").substringAfter('/')
-
-    private fun decodeName(href: String): String =
-        runCatching { URLDecoder.decode(href.trimEnd('/').substringAfterLast('/'), "UTF-8") }
-            .getOrDefault(href.substringAfterLast('/'))
-
-    private fun parseHttpDate(raw: String?): Long {
-        if (raw.isNullOrBlank()) return 0L
-        return runCatching {
-            SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).parse(raw)!!.time / 1000
-        }.getOrDefault(0L)
     }
 
     private fun authed(url: String, creds: Credentials): Request.Builder =
@@ -379,8 +343,8 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
 
     private companion object {
         const val PERMISSION_CREATE = 4
-        const val CHUNK_SIZE_BYTES = 10 * 1024 * 1024   // 10 MiB — resilient to flaky uplinks
-        const val CHUNK_NAME_WIDTH = 15                  // zero-padded, lexically sortable (§4)
+        const val CHUNK_SIZE_BYTES = 10 * 1024 * 1024 // 10 MiB — resilient to flaky uplinks
+        const val CHUNK_NAME_WIDTH = 15 // zero-padded, lexically sortable (§4)
         val OCTET_STREAM = "application/octet-stream".toMediaTypeOrNull()!!
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaTypeOrNull()
 
@@ -398,4 +362,88 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
             </d:propfind>
         """.trimIndent()
     }
+}
+
+private fun isOrphanedCleanup(result: Result<Int>, code: Int?): Boolean {
+    if (result.isFailure) return true
+    return code != null && code !in 200..299 && code != 404
+}
+
+private fun samePath(hrefA: String, hrefB: String): Boolean =
+    hrefA.trimEnd('/').substringAfter("://").substringAfter('/') ==
+        hrefB.trimEnd('/').substringAfter("://").substringAfter('/')
+
+private fun decodeName(href: String): String =
+    runCatching { URLDecoder.decode(href.trimEnd('/').substringAfterLast('/'), "UTF-8") }
+        .getOrDefault(href.substringAfterLast('/'))
+
+private fun parseHttpDate(raw: String?): Long {
+    if (raw.isNullOrBlank()) return 0L
+    return runCatching {
+        SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).parse(raw)!!.time / 1000
+    }.getOrDefault(0L)
+}
+
+/** Mutable scratch space for the `<d:response>` currently being parsed. */
+private class PropfindEntry {
+    var href: String? = null
+    var isDirectory = false
+    var contentType = ""
+    var sizeBytes = 0L
+    var lastModifiedEpochSeconds = 0L
+    var fileId: String? = null
+    var hasPreview = false
+
+    fun reset() {
+        href = null
+        isDirectory = false
+        contentType = ""
+        sizeBytes = 0L
+        lastModifiedEpochSeconds = 0L
+        fileId = null
+        hasPreview = false
+    }
+}
+
+private fun applyPropfindStartTag(parser: XmlPullParser, entry: PropfindEntry) {
+    when (parser.name?.substringAfterLast(':')?.lowercase()) {
+        "response" -> entry.reset()
+        "href" -> if (parser.next() == XmlPullParser.TEXT) entry.href = parser.text?.trim()
+        "collection" -> entry.isDirectory = true
+        "getcontenttype" -> if (parser.next() == XmlPullParser.TEXT) {
+            entry.contentType = parser.text?.trim().orEmpty()
+        }
+        "getcontentlength" -> if (parser.next() == XmlPullParser.TEXT) {
+            entry.sizeBytes = parser.text?.trim()?.toLongOrNull() ?: 0L
+        }
+        "getlastmodified" -> if (parser.next() == XmlPullParser.TEXT) {
+            entry.lastModifiedEpochSeconds = parseHttpDate(parser.text?.trim())
+        }
+        "fileid" -> if (parser.next() == XmlPullParser.TEXT) entry.fileId = parser.text?.trim()
+        "has-preview" -> if (parser.next() == XmlPullParser.TEXT) {
+            entry.hasPreview = parser.text?.trim().equals("true", ignoreCase = true)
+        }
+    }
+}
+
+/** On a `</d:response>`, turns the accumulated [entry] into a [RemoteItem] if it's a file. */
+private fun collectPropfindResponse(
+    parser: XmlPullParser,
+    entry: PropfindEntry,
+    selfPath: String,
+    items: MutableList<RemoteItem>,
+) {
+    if (parser.name?.substringAfterLast(':')?.lowercase() != "response") return
+    val href = entry.href ?: return
+    if (entry.isDirectory || samePath(href, selfPath)) return
+    items += RemoteItem(
+        href = href,
+        name = decodeName(href),
+        isDirectory = false,
+        contentType = entry.contentType,
+        sizeBytes = entry.sizeBytes,
+        lastModifiedEpochSeconds = entry.lastModifiedEpochSeconds,
+        fileId = entry.fileId,
+        hasPreview = entry.hasPreview,
+    )
 }

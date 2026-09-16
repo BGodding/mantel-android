@@ -21,7 +21,7 @@ import java.net.URI
 object Config {
 
     /** Bundled default origin — from `secrets.properties` (`MANTEL_BASE_URL`) at build time. */
-    val DEFAULT_BASE_URL: String = BuildConfig.BASE_URL
+    const val DEFAULT_BASE_URL: String = BuildConfig.BASE_URL
 
     /**
      * Hosts the app may ever talk to: the suffix from `secrets.properties`

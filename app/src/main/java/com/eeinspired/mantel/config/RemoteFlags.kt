@@ -4,8 +4,8 @@ import android.content.Context
 import com.eeinspired.mantel.data.Config
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
-import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /** Immutable read of every feature flag, taken once per launch. */
 data class FlagSnapshot(

@@ -3,6 +3,7 @@ package com.eeinspired.mantel.ui.destinations
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -85,85 +85,122 @@ fun DestinationsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (picking) "Send to which frame?" else "Your frames") },
-                actions = {
-                    TextButton(onClick = { refresh() }, enabled = !loading) { Text("Refresh") }
-                    TextButton(
-                        onClick = {
-                            repo.logOut()
-                            onSignedOut("")
-                        },
-                    ) { Text("Sign out") }
-                },
+            DestinationsTopBar(
+                picking = picking,
+                loading = loading,
+                onRefresh = { refresh() },
+                onSignOut = { repo.logOut(); onSignedOut("") },
             )
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (picking) {
-                Text(
-                    text = "$pendingCount ${if (pendingCount == 1) "item" else "items"} ready — " +
-                        "choose where to send ${if (pendingCount == 1) "it" else "them"}.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+        DestinationsContent(
+            innerPadding = innerPadding,
+            pendingCount = pendingCount,
+            picking = picking,
+            notice = notice,
+            loading = loading,
+            loadedOnce = loadedOnce,
+            destinations = destinations,
+            galleryEnabled = galleryEnabled,
+            lastUsedId = lastUsedId,
+            onChoosePhotos = onChoosePhotos,
+            onDestinationPicked = onDestinationPicked,
+            onOpenDestination = onOpenDestination,
+        )
+    }
+}
 
-            notice?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DestinationsTopBar(picking: Boolean, loading: Boolean, onRefresh: () -> Unit, onSignOut: () -> Unit) {
+    TopAppBar(
+        title = { Text(if (picking) "Send to which frame?" else "Your frames") },
+        actions = {
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
+            TextButton(onClick = onSignOut) { Text("Sign out") }
+        },
+    )
+}
 
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    loading && destinations.isEmpty() ->
-                        Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+@Composable
+private fun DestinationsContent(
+    innerPadding: PaddingValues,
+    pendingCount: Int,
+    picking: Boolean,
+    notice: String?,
+    loading: Boolean,
+    loadedOnce: Boolean,
+    destinations: List<Destination>,
+    galleryEnabled: Boolean,
+    lastUsedId: String?,
+    onChoosePhotos: () -> Unit,
+    onDestinationPicked: (Destination) -> Unit,
+    onOpenDestination: (Destination) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (picking) {
+            Text(
+                text = "$pendingCount ${if (pendingCount == 1) "item" else "items"} ready — " +
+                    "choose where to send ${if (pendingCount == 1) "it" else "them"}.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
 
-                    destinations.isEmpty() && loadedOnce ->
-                        Text(
-                            text = "No frames are shared with you yet. Ask your admin to share a " +
-                                "frame folder with your account, then tap Refresh.",
-                            style = MaterialTheme.typography.bodyMedium,
+        notice?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                loading && destinations.isEmpty() ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+
+                destinations.isEmpty() && loadedOnce ->
+                    Text(
+                        text = "No frames are shared with you yet. Ask your admin to share a " +
+                            "frame folder with your account, then tap Refresh.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(destinations, key = { it.id }) { destination ->
+                        FrameRow(
+                            destination = destination,
+                            selectable = picking || galleryEnabled,
+                            highlighted = picking && destination.id == lastUsedId,
+                            subtitle = when {
+                                picking && destination.id == lastUsedId -> "Last used"
+                                galleryEnabled && !picking -> "Tap to view photos"
+                                else -> destination.remotePath
+                            },
+                            onClick = {
+                                if (picking) onDestinationPicked(destination) else onOpenDestination(destination)
+                            },
                         )
-
-                    else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(destinations, key = { it.id }) { destination ->
-                            FrameRow(
-                                destination = destination,
-                                selectable = picking || galleryEnabled,
-                                highlighted = picking && destination.id == lastUsedId,
-                                subtitle = when {
-                                    picking && destination.id == lastUsedId -> "Last used"
-                                    galleryEnabled && !picking -> "Tap to view photos"
-                                    else -> destination.remotePath
-                                },
-                                onClick = {
-                                    if (picking) onDestinationPicked(destination) else onOpenDestination(destination)
-                                },
-                            )
-                        }
                     }
                 }
             }
+        }
 
-            if (!picking) {
-                Button(
-                    onClick = onChoosePhotos,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                ) { Text("Choose photos to upload") }
-            }
+        if (!picking) {
+            Button(
+                onClick = onChoosePhotos,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+            ) { Text("Choose photos to upload") }
         }
     }
 }
@@ -178,8 +215,11 @@ private fun FrameRow(
     onClick: () -> Unit,
 ) {
     val colors =
-        if (highlighted) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-        else CardDefaults.cardColors()
+        if (highlighted) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        } else {
+            CardDefaults.cardColors()
+        }
 
     val content: @Composable () -> Unit = {
         Column(modifier = Modifier.padding(16.dp)) {

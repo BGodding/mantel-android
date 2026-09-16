@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Mantel" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      enableEdgeToEdge() (MainActivity) draws behind the system bars and makes them
+      transparent already, but the inherited platform theme still carries its own
+      opaque android:statusBarColor/navigationBarColor — deprecated, ignored at
+      runtime under edge-to-edge, but still flagged by Play Console's pre-launch
+      report as "deprecated APIs or parameters for edge-to-edge". Overriding both
+      to transparent here removes the stale values without changing behavior.
+    -->
+    <style name="Theme.Mantel" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

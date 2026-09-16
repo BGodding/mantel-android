@@ -47,7 +47,10 @@ object MediaStaging {
         }
         val resolver = context.contentResolver
         val meta = readMetadata(context, uri)
-        require(meta.sizeBytes in 0..MAX_FILE_BYTES) { "file too large: ${meta.sizeBytes}" }
+        // meta.sizeBytes is -1 when the provider doesn't report OpenableColumns.SIZE
+        // (some document/cloud-backed providers) — reject only a *known* over-cap size
+        // here, and fall back to the copied file's real length below.
+        require(meta.sizeBytes < 0 || meta.sizeBytes <= MAX_FILE_BYTES) { "file too large: ${meta.sizeBytes}" }
 
         val dir = batchDir(context, batchId).apply { mkdirs() }
         val target = File(dir, localFileName(meta.displayName, dir))
@@ -56,11 +59,17 @@ object MediaStaging {
             target.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
         }
 
+        val actualSizeBytes = if (meta.sizeBytes >= 0) meta.sizeBytes else target.length()
+        if (actualSizeBytes > MAX_FILE_BYTES) {
+            target.delete()
+            throw IllegalArgumentException("file too large: $actualSizeBytes")
+        }
+
         return StagedFile(
             path = target.absolutePath,
             displayName = meta.displayName,
             mimeType = meta.mimeType,
-            sizeBytes = if (meta.sizeBytes >= 0) meta.sizeBytes else target.length(),
+            sizeBytes = actualSizeBytes,
             captureEpochSeconds = meta.captureEpochSeconds,
         )
     }

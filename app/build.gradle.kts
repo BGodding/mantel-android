@@ -50,8 +50,8 @@ android {
         applicationId = "com.eeinspired.mantel"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -110,8 +110,8 @@ android {
         abortOnError = true
         warningsAsErrors = false
         checkDependencies = true
-        sarifReport = true
-        htmlReport = true
+        // sarifReport/htmlReport removed: AGP 9.4 deprecated both booleans — lint
+        // reports (SARIF + HTML) are now always generated regardless.
         // The six top-level screen composables are navigation entry points, never
         // composed with a caller-supplied Modifier — compose-lints documents this
         // as a valid exception to ComposeModifierMissing.
@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.firebase.config)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -147,4 +148,10 @@ dependencies {
 
     detektPlugins(libs.detekt.formatting)
     lintChecks(libs.compose.lint.checks)
+
+    constraints {
+        // We don't use fragments directly — Firebase (play-services-basement) pulls
+        // in 1.1.0/1.0.0 transitively, which Play Console flags as outdated.
+        implementation(libs.androidx.fragment)
+    }
 }

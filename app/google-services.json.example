@@ -1,0 +1,30 @@
+{
+  "_comment": "Placeholder only — not a real Firebase project. Lets the google-services / Crashlytics Gradle plugins process without a real config. Used by CI (copied to google-services.json) and available for a fresh local clone; a real deployment should use its own real file, gitignored, never this one.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "mantel-ci-placeholder",
+    "storage_bucket": "mantel-ci-placeholder.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "com.eeinspired.mantel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-PLACEHOLDER0000000000000000000000"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
