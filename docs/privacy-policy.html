@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mantel Privacy Policy</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f1efe7;
+    --surface: #ffffff;
+    --ink: #24231d;
+    --ink-muted: #6d6a5c;
+    --ink-faint: #96927f;
+    --line: #dcd8c8;
+    --accent: #8a6a24;
+    --accent-ink: #6e5419;
+    --accent-wash: #eae2c9;
+    --good: #4b6b4f;
+    --focus: #2d5a8c;
+    --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+    --font-body: "Public Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1a1912;
+      --surface: #232116;
+      --ink: #ece7d6;
+      --ink-muted: #b3ad97;
+      --ink-faint: #7d7869;
+      --line: #3a3728;
+      --accent: #cda94f;
+      --accent-ink: #e2c179;
+      --accent-wash: #383221;
+      --good: #8cae90;
+      --focus: #7fb0e8;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  img { max-width: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    padding-inline: 20px;
+    padding-block: 56px 96px;
+  }
+
+  a { color: var(--accent-ink); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+
+  .page {
+    max-width: 760px;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+  }
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .wordmark .mark {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 2.1rem;
+    letter-spacing: 0.01em;
+  }
+  .wordmark .doc-type {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    background: var(--accent-wash);
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .masthead .dek {
+    font-size: 1.05rem;
+    color: var(--ink-muted);
+    max-width: 58ch;
+    text-wrap: balance;
+  }
+  .meta-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+    margin-top: 4px;
+  }
+  .meta-row b { color: var(--ink-muted); font-weight: 500; }
+
+  nav.toc {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 22px;
+  }
+  nav.toc h2 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  nav.toc ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    columns: 2;
+    column-gap: 28px;
+    counter-reset: toc;
+  }
+  nav.toc li {
+    break-inside: avoid;
+    counter-increment: toc;
+    font-size: 0.92rem;
+    padding: 3px 0;
+  }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent-ink); text-decoration: underline; }
+
+  section { scroll-margin-top: 20px; }
+  section h2 {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0 0 6px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--accent);
+    display: inline-block;
+  }
+  section > p { max-width: 66ch; margin: 14px 0; }
+  section > p.lede { color: var(--ink-muted); font-size: 1.03rem; }
+
+  ul.plain { margin: 14px 0; padding-left: 1.2em; max-width: 62ch; }
+  ul.plain li { margin: 7px 0; }
+  ul.plain li b { color: var(--ink); font-weight: 600; }
+
+  code, .inline-mono {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--accent-wash);
+    color: var(--accent-ink);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 18px;
+  }
+  .compare > div { padding: 20px 22px; background: var(--surface); }
+  .compare > div + div { border-left: 1px solid var(--line); }
+  .compare h3 {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .compare .yes h3 { color: var(--accent-ink); }
+  .compare .no h3 { color: var(--good); }
+  .compare ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .compare li { font-size: 0.94rem; padding-left: 1.3em; position: relative; }
+  .compare .yes li::before { content: "•"; position: absolute; left: 0; color: var(--accent); }
+  .compare .no li::before { content: "—"; position: absolute; left: 0; color: var(--good); }
+  @media (max-width: 620px) {
+    .compare { grid-template-columns: 1fr; }
+    .compare > div + div { border-left: none; border-top: 1px solid var(--line); }
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .fact {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-muted);
+    padding: 7px 12px;
+    border-radius: 5px;
+  }
+  .fact.not-requested {
+    text-decoration: line-through;
+    color: var(--ink-faint);
+    border-style: dashed;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+  footer a { color: var(--ink-muted); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    section { animation: rise 0.4s ease-out backwards; }
+    section:nth-of-type(1) { animation-delay: 0.02s; }
+    section:nth-of-type(2) { animation-delay: 0.05s; }
+    section:nth-of-type(3) { animation-delay: 0.08s; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="wordmark">
+      <span class="mark">Mantel</span>
+      <span class="doc-type">Privacy Policy</span>
+    </div>
+    <p class="dek">Mantel uploads the photos and videos you choose to a Nextcloud server you control. This page explains, plainly, what the app does and doesn't do with your data.</p>
+    <div class="meta-row">
+      <span><b>Effective</b> September 15, 2026</span>
+      <span><b>App</b> com.eeinspired.mantel</span>
+      <span><b>Platform</b> Android</span>
+      <span><b>Contact</b> <a href="mailto:mantel@eeinspired.com">mantel@eeinspired.com</a></span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Table of contents">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#collect">What Mantel collects</a></li>
+      <li><a href="#photos">Where your photos go</a></li>
+      <li><a href="#permissions">Permissions</a></li>
+      <li><a href="#retention">Retention &amp; deletion</a></li>
+      <li><a href="#third-parties">Third parties</a></li>
+      <li><a href="#children">Children</a></li>
+      <li><a href="#changes">Changes &amp; contact</a></li>
+    </ol>
+  </nav>
+
+  <section id="overview">
+    <h2>Overview</h2>
+    <p class="lede">Mantel is a private uploader: you sign in with your own Nextcloud account, pick photos or videos, choose a destination, and the app sends them straight to your server over WebDAV. There is no Mantel-run server in between, and no copy of your photos ever reaches the developer.</p>
+    <p>The only data Mantel sends anywhere besides your own Nextcloud server is a small set of technical diagnostics, described below, sent to Firebase (a Google service) so that crashes can be fixed and the app's reliability can be measured. That collection only happens in the version of the app installed from an app store or shared directly with you — never in a development build.</p>
+  </section>
+
+  <section id="collect">
+    <h2>What Mantel collects</h2>
+    <p>Mantel uses <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Crashlytics and Firebase Analytics</a> for stability and reliability. Everything they collect is coarse and technical:</p>
+    <div class="compare">
+      <div class="yes">
+        <h3>Collected</h3>
+        <ul>
+          <li>Crash reports and device diagnostics — device model, OS version, app version, stack traces</li>
+          <li>Coarse app events — e.g. <code>login_success</code>, <code>upload_result</code> (outcome, whether it was chunked, size in MB, duration), <code>gallery_open</code> (item count)</li>
+          <li>A resettable, anonymous installation identifier used to group the above</li>
+        </ul>
+      </div>
+      <div class="no">
+        <h3>Never collected</h3>
+        <ul>
+          <li>Your Nextcloud username or app password</li>
+          <li>The content, filename, or folder path of any photo or video</li>
+          <li>Your name, contacts, precise location, or browsing activity</li>
+          <li>Anything at all, in a debug/development build of the app</li>
+        </ul>
+      </div>
+    </div>
+    <p>Your Nextcloud app password is encrypted on your device with a hardware-backed key (AES-256-GCM, generated in the Android Keystore) and used only to authenticate directly to the Nextcloud server you configured, over HTTPS. It is never transmitted to, or readable by, the developer.</p>
+  </section>
+
+  <section id="photos">
+    <h2>Where your photos go</h2>
+    <p>When you share or pick a photo or video, it's copied briefly into the app's private storage on your device, uploaded directly to the Nextcloud folder you chose over an encrypted WebDAV connection, and then deleted from that private storage. The app has no photo library, no cloud storage of its own, and no server that photos pass through — the destination is whichever Nextcloud server address you (or, for a family device, whoever set it up) configured.</p>
+  </section>
+
+  <section id="permissions">
+    <h2>Permissions</h2>
+    <p>Mantel asks for as little as the OS will allow. Photos and videos are selected through Android's system Photo Picker or the share sheet, which grants the app access only to the specific items you pick — never your whole library.</p>
+    <div class="facts">
+      <span class="fact">Internet</span>
+      <span class="fact">Network state</span>
+      <span class="fact">Post notifications — upload progress</span>
+      <span class="fact">Foreground service — keeps an upload running while you use another app</span>
+      <span class="fact not-requested">Storage / media library</span>
+      <span class="fact not-requested">Camera</span>
+      <span class="fact not-requested">Contacts</span>
+      <span class="fact not-requested">Location</span>
+    </div>
+  </section>
+
+  <section id="retention">
+    <h2>Retention &amp; deletion</h2>
+    <ul class="plain">
+      <li><b>On-device credentials</b> are removed immediately when you sign out, and are unreadable without the device's own hardware key even before that.</li>
+      <li><b>Revoke access any time</b> by deleting the app password from your Nextcloud account's security settings — Mantel loses access instantly, server-side.</li>
+      <li><b>Diagnostic data</b> held in Firebase follows Google's standard Crashlytics/Analytics retention windows. Write <a href="mailto:mantel@eeinspired.com">mantel@eeinspired.com</a> to request it be cleared sooner.</li>
+    </ul>
+  </section>
+
+  <section id="third-parties">
+    <h2>Third parties</h2>
+    <p>The only third-party processor Mantel uses is <b>Firebase / Google</b>, for the diagnostics described above. Mantel contains no advertising SDK, does not sell or share data for advertising, and does not use any analytics or tracking service other than Firebase.</p>
+  </section>
+
+  <section id="children">
+    <h2>Children</h2>
+    <p>Mantel is a private tool distributed directly to a small group of family and friends chosen by the developer — it is not published for general use and is not directed at children. It should only be installed on a device by, or with the supervision of, an adult in that group.</p>
+  </section>
+
+  <section id="changes">
+    <h2>Changes &amp; contact</h2>
+    <p>If this policy changes, the effective date above will be updated, and testers will be told directly rather than relying on them to re-check this page. Questions, deletion requests, or anything else: <a href="mailto:mantel@eeinspired.com">mantel@eeinspired.com</a>.</p>
+  </section>
+
+  <footer>
+    <span>Mantel — a private photo-frame uploader.</span>
+    <span>Android app id <span class="inline-mono" style="background:none;color:inherit;padding:0;">com.eeinspired.mantel</span></span>
+  </footer>
+
+</div>
+
+</body>
+</html>
