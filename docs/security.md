@@ -174,8 +174,11 @@ disable Google signals, disable granular location/device data collection.
 and no custom keys/logs are attached. Nothing else required; revisit only if you start
 adding `setCustomKey`.
 
-`google-services.json` stays gitignored — each build environment (and CI, as an encrypted
-secret file) supplies its own.
+`google-services.json` stays gitignored — each build environment supplies its own real file.
+CI (`.github/workflows/ci.yml`) deliberately does **not** use a secret for this: it copies the
+committed, non-functional `app/google-services.json.example` into place, since PR validation
+only needs to compile/lint/test and never talks to a real Firebase project. A real encrypted
+secret would only be needed if CI ever had to produce a signed, telemetry-capable release build.
 
 ### 12. Supply-chain hardening
 
@@ -183,8 +186,10 @@ secret file) supplies its own.
   `./gradlew --write-verification-metadata sha256 help` → `gradle/verification-metadata.xml`.
   Gradle then checksum-verifies every dependency. Re-run the same command after any version
   bump to append new entries. (Adds friction on upgrades — accept it or scope it to CI.)
-- **Wrapper integrity.** Pin `distributionSha256Sum` in `gradle/wrapper/gradle-wrapper.properties`
-  and add the `gradle/wrapper-validation-action` GitHub Action.
+- **Wrapper integrity — validation action ✅ done (Sept 2026).**
+  `.github/workflows/ci.yml` runs `gradle/actions/wrapper-validation@v4` on every PR, which
+  checksum-verifies `gradle-wrapper.jar` against Gradle's own known-good list. **Not yet done:**
+  pinning `distributionSha256Sum` in `gradle/wrapper/gradle-wrapper.properties`.
 - **Dependabot** (zero-config CVE + version PRs) — `.github/dependabot.yml`:
   ```yaml
   version: 2

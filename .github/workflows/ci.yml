@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Catches a compromised/tampered gradle-wrapper.jar (docs/security.md #12).
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Caching is left off: as of gradle/actions v6, enabling it opts into a
+      # separate proprietary "gradle-actions-caching" component and its own
+      # commercial Terms of Use (not MIT) — a licensing call, not a default to
+      # accept silently. Flip to false for faster builds if that's acceptable.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      # secrets.properties has a committed .example fallback (no secret needed).
+      # google-services.json does not — the google-services/Crashlytics plugins
+      # fail outright without *a* file, so use the committed, non-functional
+      # placeholder. Never the real one: CI never touches real Firebase config.
+      - name: Use placeholder google-services.json
+        run: cp app/google-services.json.example app/google-services.json
+
+      - name: Lint
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Detekt
+        run: ./gradlew detekt --stacktrace
+
+      - name: Assemble debug
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/detekt/detekt.html
+            app/build/test-results/testDebugUnitTest
+          retention-days: 14
+          if-no-files-found: ignore

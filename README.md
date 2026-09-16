@@ -31,6 +31,10 @@ Two things aren't in the repo:
 2. **`app/google-services.json`** — from your own Firebase project. Crashlytics +
    Analytics collect only in release builds; Remote Config carries three keys:
    `gallery_enabled` (bool), `delete_enabled` (bool), `server_base_url` (string).
+   (Unlike `secrets.properties`, the Google Services/Crashlytics Gradle plugins
+   require *a* file to exist — there's no automatic fallback. CI copies the
+   non-functional `app/google-services.json.example` into place instead, since
+   builds there only need to compile/lint/test, never talk to a real project.)
 
 ## Build
 
