@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -41,6 +42,8 @@ fun PhotoScreen(
     onSignedOut: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val httpClient = remember { NextcloudHttpClient.create(context) }
     var confirming by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -60,18 +63,21 @@ fun PhotoScreen(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = if (item.isVideo) (item.previewUrl() ?: item.downloadUrl()) else item.downloadUrl(),
-                contentDescription = item.name,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-            val footer = when {
-                error != null -> error!!
-                item.isVideo -> "Video — open in Nextcloud to play"
-                else -> null
+            if (item.isVideo) {
+                VideoPlayer(
+                    url = item.downloadUrl(),
+                    client = httpClient,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                AsyncImage(
+                    model = item.downloadUrl(),
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
-            footer?.let {
+            error?.let {
                 Text(
                     text = it,
                     color = Color.White,
