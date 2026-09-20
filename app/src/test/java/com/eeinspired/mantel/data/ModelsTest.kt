@@ -45,7 +45,7 @@ class ModelsTest {
             hasPreview = true,
         )
         assertEquals(
-            "${BuildConfig.BASE_URL}/index.php/core/preview?fileId=42&x=300&y=300&a=1",
+            "${BuildConfig.BASE_URL}/core/preview?fileId=42&x=256&y=256&mimeFallback=true&a=0",
             base.previewUrl(),
         )
         assertNull(base.copy(hasPreview = false).previewUrl())

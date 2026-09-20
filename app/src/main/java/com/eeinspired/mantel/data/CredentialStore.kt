@@ -44,9 +44,17 @@ class CredentialStore(context: Context) {
         body.copyInto(blob, iv.size)
 
         prefs.edit { putString(KEY_BLOB, Base64.encodeToString(blob, Base64.NO_WRAP)) }
+        cached = creds
     }
 
-    fun load(): Credentials? = try {
+    /**
+     * Decrypting goes through the Keystore, which on real hardware (TEE/StrongBox)
+     * costs hundreds of ms per call and serializes. The image loader asks for
+     * credentials on every request, so the decrypted value is kept in memory.
+     */
+    fun load(): Credentials? = cached ?: decrypt()?.also { cached = it }
+
+    private fun decrypt(): Credentials? = try {
         val stored = prefs.getString(KEY_BLOB, null) ?: return null
         val blob = Base64.decode(stored, Base64.NO_WRAP)
         val iv = blob.copyOfRange(0, GCM_IV_BYTES)
@@ -65,6 +73,7 @@ class CredentialStore(context: Context) {
     }
 
     fun clear() {
+        cached = null
         prefs.edit { remove(KEY_BLOB) }
     }
 
@@ -101,6 +110,9 @@ class CredentialStore(context: Context) {
     }
 
     private companion object {
+        @Volatile
+        var cached: Credentials? = null
+
         const val KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "mantel.credentials.v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

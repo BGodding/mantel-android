@@ -358,6 +358,7 @@ class NextcloudClient(private val baseUrl: String = Config.baseUrl) {
                 <d:getlastmodified/>
                 <oc:fileid/>
                 <nc:has-preview/>
+                <nc:upload_time/>
               </d:prop>
             </d:propfind>
         """.trimIndent()
@@ -393,6 +394,7 @@ private class PropfindEntry {
     var lastModifiedEpochSeconds = 0L
     var fileId: String? = null
     var hasPreview = false
+    var uploadedEpochSeconds = 0L
 
     fun reset() {
         href = null
@@ -402,6 +404,7 @@ private class PropfindEntry {
         lastModifiedEpochSeconds = 0L
         fileId = null
         hasPreview = false
+        uploadedEpochSeconds = 0L
     }
 }
 
@@ -420,6 +423,9 @@ private fun applyPropfindStartTag(parser: XmlPullParser, entry: PropfindEntry) {
             entry.lastModifiedEpochSeconds = parseHttpDate(parser.text?.trim())
         }
         "fileid" -> if (parser.next() == XmlPullParser.TEXT) entry.fileId = parser.text?.trim()
+        "upload_time" -> if (parser.next() == XmlPullParser.TEXT) {
+            entry.uploadedEpochSeconds = parser.text?.trim()?.toLongOrNull() ?: 0L
+        }
         "has-preview" -> if (parser.next() == XmlPullParser.TEXT) {
             entry.hasPreview = parser.text?.trim().equals("true", ignoreCase = true)
         }
@@ -445,5 +451,6 @@ private fun collectPropfindResponse(
         lastModifiedEpochSeconds = entry.lastModifiedEpochSeconds,
         fileId = entry.fileId,
         hasPreview = entry.hasPreview,
+        uploadedEpochSeconds = entry.uploadedEpochSeconds,
     )
 }

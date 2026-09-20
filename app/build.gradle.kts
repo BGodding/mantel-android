@@ -50,8 +50,8 @@ android {
         applicationId = "com.eeinspired.mantel"
         minSdk = 33
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -19,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -240,25 +241,37 @@ private fun ReadyContent(
     onUploadDone: () -> Unit,
     onSignedOut: (String) -> Unit,
 ) {
+    // The gallery stays composed underneath the viewer so its scroll position and
+    // loaded list survive opening a photo; a delete bumps the token to refetch.
+    var galleryRefresh by remember { mutableIntStateOf(0) }
     when {
-        galleryDestination != null && viewerItem != null -> PhotoScreen(
-            destination = galleryDestination,
-            item = viewerItem,
-            repo = repo,
-            canDelete = flags.deleteEnabled && galleryDestination.canDelete,
-            onDeleted = onItemDeleted,
-            onBack = onViewerBack,
-            onSignedOut = onSignedOut,
-        )
-
-        galleryDestination != null -> GalleryScreen(
-            destination = galleryDestination,
-            repo = repo,
-            canDelete = flags.deleteEnabled && galleryDestination.canDelete,
-            onOpenItem = onOpenItem,
-            onBack = onGalleryBack,
-            onSignedOut = onSignedOut,
-        )
+        galleryDestination != null -> {
+            GalleryScreen(
+                destination = galleryDestination,
+                repo = repo,
+                canDelete = flags.deleteEnabled && galleryDestination.canDelete,
+                refreshToken = galleryRefresh,
+                onOpenItem = onOpenItem,
+                onBack = onGalleryBack,
+                onSignedOut = onSignedOut,
+            )
+            if (viewerItem != null) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    PhotoScreen(
+                        destination = galleryDestination,
+                        item = viewerItem,
+                        repo = repo,
+                        canDelete = flags.deleteEnabled && galleryDestination.canDelete,
+                        onDeleted = {
+                            galleryRefresh++
+                            onItemDeleted()
+                        },
+                        onBack = onViewerBack,
+                        onSignedOut = onSignedOut,
+                    )
+                }
+            }
+        }
 
         batchTag != null -> UploadStatusScreen(batchTag = batchTag, onDone = onUploadDone)
 
