@@ -3,15 +3,25 @@ import java.util.Properties
 
 // Deployment config: real values in the gitignored secrets.properties, with
 // secrets.properties.example as the committed fallback so a fresh clone builds.
+val realSecrets = rootProject.file("secrets.properties")
 val secrets = Properties().apply {
-    val real = rootProject.file("secrets.properties")
     val example = rootProject.file("secrets.properties.example")
-    (if (real.exists()) real else example).inputStream().use { load(it) }
+    (if (realSecrets.exists()) realSecrets else example).inputStream().use { load(it) }
 }
+
+// A release built from the example fallback would ship pointing at nextcloud.example.com.
+// CI opts in explicitly (-PallowExampleSecrets=true) because it only checks that R8 works.
+val releaseRequested = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+if (releaseRequested && !realSecrets.exists() && !providers.gradleProperty("allowExampleSecrets").isPresent) {
+    throw GradleException("secrets.properties is missing: refusing to build a release against the example server.")
+}
+
+/** Escapes a value for embedding in a generated Java string literal. */
+fun String.asJavaLiteral() = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 // Release signing: gitignored, not committed, no fallback — a release build
 // without it fails with a clear "signing config not set up" error rather than
-// silently producing an unsigned APK. See docs/security.md, owner action #2.
+// silently producing an unsigned APK. See docs/security.md.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -50,16 +60,16 @@ android {
         applicationId = "com.eeinspired.mantel"
         minSdk = 33
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.4.4"
+        versionCode = 10
+        versionName = "1.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "BASE_URL", "\"${secrets.getProperty("MANTEL_BASE_URL")}\"")
+        buildConfigField("String", "BASE_URL", secrets.getProperty("MANTEL_BASE_URL").asJavaLiteral())
         buildConfigField(
             "String",
             "ALLOWED_HOST_SUFFIX",
-            "\"${secrets.getProperty("MANTEL_ALLOWED_HOST_SUFFIX")}\"",
+            secrets.getProperty("MANTEL_ALLOWED_HOST_SUFFIX").asJavaLiteral(),
         )
     }
 
@@ -141,6 +151,9 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource.okhttp)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.org.json) // the android.jar org.json is a stub in unit tests
+    testImplementation(libs.kxml2) // a real XmlPullParser for PROPFIND tests
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

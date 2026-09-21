@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,30 +25,37 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.core.content.IntentCompat
-import coil3.compose.setSingletonImageLoaderFactory
+import androidx.lifecycle.lifecycleScope
 import com.eeinspired.mantel.config.FlagSnapshot
 import com.eeinspired.mantel.config.RemoteFlags
+import com.eeinspired.mantel.data.AppScope
 import com.eeinspired.mantel.data.Bootstrap
-import com.eeinspired.mantel.data.Config
 import com.eeinspired.mantel.data.Destination
+import com.eeinspired.mantel.data.Messages
 import com.eeinspired.mantel.data.RemoteItem
 import com.eeinspired.mantel.data.SessionRepository
 import com.eeinspired.mantel.telemetry.Telemetry
 import com.eeinspired.mantel.ui.common.LoadingScreen
 import com.eeinspired.mantel.ui.destinations.DestinationsScreen
 import com.eeinspired.mantel.ui.gallery.GalleryScreen
-import com.eeinspired.mantel.ui.gallery.NextcloudImageLoader
 import com.eeinspired.mantel.ui.gallery.PhotoScreen
 import com.eeinspired.mantel.ui.login.LoginScreen
 import com.eeinspired.mantel.ui.theme.MantelTheme
 import com.eeinspired.mantel.ui.upload.UploadStatusScreen
-import com.eeinspired.mantel.upload.MediaStaging
+import com.eeinspired.mantel.upload.EnqueueResult
 import com.eeinspired.mantel.upload.UploadEnqueuer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -54,13 +63,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Telemetry.init(applicationContext)
-        Config.initialize(applicationContext) // resolve the server host before any network use
-        MediaStaging.sweepStale(applicationContext)
-        sharedUris.value = extractSharedUris(intent)
+        // A recreated activity (rotation, dark mode) or a relaunch from Recents still carries the
+        // original SEND intent; re-reading it would resurrect a share that was already handled.
+        val freshLaunch = savedInstanceState == null &&
+            intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
+        if (freshLaunch) acceptSharedUris(intent)
         enableEdgeToEdge()
         setContent {
-            setSingletonImageLoaderFactory { context -> NextcloudImageLoader.create(context) }
             MantelTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -78,8 +87,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val incoming = extractSharedUris(intent)
-        if (incoming.isNotEmpty()) sharedUris.value = incoming
+        acceptSharedUris(intent)
+    }
+
+    /** Validation asks other apps' content providers for a MIME type, so it stays off the main thread. */
+    private fun acceptSharedUris(intent: Intent) {
+        lifecycleScope.launch {
+            val incoming = withContext(Dispatchers.IO) { extractSharedUris(intent) }
+            if (incoming.isNotEmpty()) sharedUris.value = incoming
+        }
     }
 
     private fun extractSharedUris(intent: Intent?): List<Uri> {
@@ -113,12 +129,26 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private val UriListSaver = listSaver(
+    save = { uris: List<Uri> -> uris.map(Uri::toString) },
+    restore = { saved: List<String> -> saved.map(Uri::parse) },
+)
+
+private val DestinationSaver = listSaver<Destination?, Any>(
+    save = { d -> if (d == null) emptyList() else listOf(d.id, d.displayName, d.remotePath, d.permissions) },
+    restore = { l ->
+        if (l.size == 4) Destination(l[0] as String, l[1] as String, l[2] as String, l[3] as Int) else null
+    },
+)
+
 private sealed interface Screen {
     data object Loading : Screen
     data class Login(val message: String?) : Screen
     data object Ready : Screen
 }
 
+// The single state host for all navigation; splitting it would only scatter the shared state.
+@Suppress("LongMethod")
 @Composable
 private fun FrameUploaderApp(
     sharedUris: List<Uri>,
@@ -131,9 +161,13 @@ private fun FrameUploaderApp(
     var screen by remember { mutableStateOf<Screen>(Screen.Loading) }
     var bootNotice by remember { mutableStateOf<String?>(null) }
     var flags by remember { mutableStateOf(FlagSnapshot()) }
-    var pending by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var batchTag by remember { mutableStateOf<String?>(null) }
-    var galleryDestination by remember { mutableStateOf<Destination?>(null) }
+    // Saveable: rotation / dark-mode / locale changes recreate the activity and must not
+    // throw away a picked batch, the upload status view, or the open frame.
+    var pending by rememberSaveable(stateSaver = UriListSaver) { mutableStateOf(emptyList()) }
+    var batchTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var skippedCount by rememberSaveable { mutableIntStateOf(0) }
+    var galleryDestination by rememberSaveable(stateSaver = DestinationSaver) { mutableStateOf(null) }
+    var enqueuing by remember { mutableStateOf(false) }
     var viewerItem by remember { mutableStateOf<RemoteItem?>(null) }
 
     LoadFlagsEffect(context) { flags = it }
@@ -201,13 +235,22 @@ private fun FrameUploaderApp(
             onPickPhotos = {
                 photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             },
+            skipped = skippedCount,
             onDestinationPicked = { picked ->
-                val user = repo.username
-                val toSend = pending
-                if (user != null && toSend.isNotEmpty()) {
+                val user = repo.userId
+                if (user != null && pending.isNotEmpty() && !enqueuing) {
+                    enqueuing = true
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     repo.lastDestinationId = picked.id
-                    scope.launch { batchTag = UploadEnqueuer.enqueue(context, picked, user, toSend).tag }
+                    startUpload(context, scope, user, picked, pending) { result ->
+                        enqueuing = false
+                        if (result.staged == 0) {
+                            Toast.makeText(context, Messages.NOTHING_STAGED, Toast.LENGTH_LONG).show()
+                        } else {
+                            skippedCount = result.failed
+                            batchTag = result.tag
+                        }
+                    }
                 }
             },
             onOpenDestination = { galleryDestination = it },
@@ -221,6 +264,22 @@ private fun FrameUploaderApp(
     }
 }
 
+/**
+ * Copies the picks into staging and enqueues them. Runs in the process-wide scope so the copy
+ * finishes even if the activity is recreated mid-way; [onFinished] runs on the UI scope.
+ */
+private fun startUpload(
+    context: Context,
+    scope: CoroutineScope,
+    user: String,
+    picked: Destination,
+    uris: List<Uri>,
+    onFinished: (EnqueueResult) -> Unit,
+) {
+    val staging = AppScope.io.async { UploadEnqueuer.enqueue(context, picked, user, uris) }
+    scope.launch { onFinished(staging.await()) }
+}
+
 /** [Screen.Ready]'s content: routes to whichever of the four post-login screens applies. */
 @Composable
 private fun ReadyContent(
@@ -231,6 +290,7 @@ private fun ReadyContent(
     galleryDestination: Destination?,
     viewerItem: RemoteItem?,
     batchTag: String?,
+    skipped: Int,
     onPickPhotos: () -> Unit,
     onDestinationPicked: (Destination) -> Unit,
     onOpenDestination: (Destination) -> Unit,
@@ -246,15 +306,18 @@ private fun ReadyContent(
     var galleryRefresh by remember { mutableIntStateOf(0) }
     when {
         galleryDestination != null -> {
-            GalleryScreen(
-                destination = galleryDestination,
-                repo = repo,
-                canDelete = flags.deleteEnabled && galleryDestination.canDelete,
-                refreshToken = galleryRefresh,
-                onOpenItem = onOpenItem,
-                onBack = onGalleryBack,
-                onSignedOut = onSignedOut,
-            )
+            // While the viewer covers it, the gallery must not stay reachable by screen readers.
+            Box(modifier = if (viewerItem != null) Modifier.clearAndSetSemantics { } else Modifier) {
+                GalleryScreen(
+                    destination = galleryDestination,
+                    repo = repo,
+                    canDelete = flags.deleteEnabled && galleryDestination.canDelete,
+                    refreshToken = galleryRefresh,
+                    onOpenItem = onOpenItem,
+                    onBack = onGalleryBack,
+                    onSignedOut = onSignedOut,
+                )
+            }
             if (viewerItem != null) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     PhotoScreen(
@@ -273,7 +336,7 @@ private fun ReadyContent(
             }
         }
 
-        batchTag != null -> UploadStatusScreen(batchTag = batchTag, onDone = onUploadDone)
+        batchTag != null -> UploadStatusScreen(batchTag = batchTag, skipped = skipped, onDone = onUploadDone)
 
         else -> DestinationsScreen(
             repo = repo,

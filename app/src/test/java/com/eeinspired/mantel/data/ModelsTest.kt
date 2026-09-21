@@ -27,7 +27,7 @@ class ModelsTest {
             destination(5).uploadCollectionUrl("bob"),
         )
         assertEquals(
-            "${BuildConfig.BASE_URL}/remote.php/dav/files/bob/A%20%26%20B/Trip%202026/",
+            "${BuildConfig.BASE_URL}/remote.php/dav/files/bob/A%20&%20B/Trip%202026/",
             destination(5, "/A & B/Trip 2026").uploadCollectionUrl("bob"),
         )
     }
@@ -50,5 +50,31 @@ class ModelsTest {
         )
         assertNull(base.copy(hasPreview = false).previewUrl())
         assertNull(base.copy(fileId = null).previewUrl())
+    }
+
+    @Test
+    fun uploadCollectionUrl_keeps_plus_literal_and_encodes_odd_user_ids() {
+        assertEquals(
+            "${BuildConfig.BASE_URL}/remote.php/dav/files/a%20b%3Fc/Kids%20+%20Pets/",
+            destination(5, "/Kids + Pets").uploadCollectionUrl("a b?c"),
+        )
+    }
+
+    @Test
+    fun hrefs_decode_as_path_segments_not_form_data() {
+        assertEquals(
+            listOf("remote.php", "dav", "files", "bob", "a+b c.jpg"),
+            hrefSegments("/remote.php/dav/files/bob/a+b%20c.jpg"),
+        )
+        // A server-supplied absolute URL can never move the request to another host.
+        assertEquals("/x/y.jpg", hrefPath("https://evil.example/x/y.jpg"))
+    }
+
+    @Test
+    fun credentials_never_print_the_password() {
+        val text = Credentials("bob", "s3cret-pass", "bob-uid").toString()
+        assertFalse(text, "s3cret-pass" in text)
+        assertTrue(text, "bob-uid" in text)
+        assertEquals("Basic Ym9iOnMzY3JldC1wYXNz", Credentials("bob", "s3cret-pass").basicAuthHeader())
     }
 }

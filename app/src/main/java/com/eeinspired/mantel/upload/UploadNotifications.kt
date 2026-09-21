@@ -4,6 +4,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import androidx.core.app.NotificationCompat
+import androidx.work.WorkManager
+import com.eeinspired.mantel.R
+import java.util.UUID
 
 /** Foreground notification for in-progress uploads (Requirements §6.4 background transfer). */
 object UploadNotifications {
@@ -23,14 +26,20 @@ object UploadNotifications {
         }
     }
 
-    fun building(context: Context, fileName: String): NotificationCompat.Builder {
+    /** No file name: notification text can show on the lock screen. */
+    fun building(context: Context, workId: UUID): NotificationCompat.Builder {
         ensureChannel(context)
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setSmallIcon(R.drawable.ic_stat_upload)
             .setContentTitle("Uploading to your frame")
-            .setContentText(fileName)
             .setOngoing(true)
             .setProgress(0, 0, true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .addAction(
+                0,
+                "Cancel",
+                WorkManager.getInstance(context).createCancelPendingIntent(workId),
+            )
     }
 }

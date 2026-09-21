@@ -63,6 +63,14 @@ style:
 exceptions:
   active: true
   TooGenericExceptionCaught:
-    active: false
+    active: true
   SwallowedException:
-    active: false
+    active: true
+    ignoredExceptionTypes:
+      - InterruptedException
+      - MalformedURLException
+      - NumberFormatException
+      - ParseException
+      - IllegalArgumentException
+      - IOException
+      - JSONException

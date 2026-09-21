@@ -14,6 +14,8 @@ object Messages {
     const val INVALID_CREDENTIALS =
         "That username or app password wasn't accepted. Remember to use an app password, " +
             "not your Nextcloud login password — ask your admin if you don't have one."
+    const val NOTHING_STAGED =
+        "Couldn't prepare those files — they may be too large, unreadable, or your phone is out of space."
     const val NO_CONNECTION =
         "No connection — check your network and try again."
 
@@ -24,18 +26,20 @@ object Messages {
             "The server sent something unexpected — try again in a moment."
         }
 
-    /** Maps an [com.eeinspired.mantel.upload.UploadWorker] error kind to user copy. */
-    fun uploadError(kind: String?): String = when (kind) {
-        "auth" -> "Your access expired — sign in again, then resend."
-        "no_credentials" -> "You're signed out — sign in again, then resend."
-        "forbidden" ->
-            "Couldn't upload — a file with this name may already exist on the frame, " +
-                "or you don't have permission to add to it."
-        "dest_missing" -> "That frame is no longer shared with you."
-        "quota" -> "The server is out of storage space."
-        "network" -> "No connection — this one didn't finish. Try again when you're back online."
-        "server" -> "The server had a problem — this one didn't finish."
-        "unreadable_file" -> "Couldn't read that file from your phone."
-        else -> "This one didn't finish."
+    /** Maps an [com.eeinspired.mantel.upload.UploadWorker] failure to user copy. */
+    fun uploadError(error: UploadError?): String = when (error) {
+        UploadError.AUTH -> "Your access expired — sign in again, then resend."
+        UploadError.NO_CREDENTIALS -> "You're signed out — sign in again, then resend."
+        UploadError.FORBIDDEN ->
+            "Couldn't upload — you may not have permission to add to this frame, " +
+                "or a file with this name already exists there."
+        UploadError.CONFLICT -> "A file with this name already exists on the frame."
+        UploadError.DEST_MISSING -> "That frame is no longer shared with you."
+        UploadError.QUOTA -> "The server is out of storage space."
+        UploadError.NETWORK -> "No connection — this one didn't finish. Try again when you're back online."
+        UploadError.SERVER -> "The server had a problem — this one didn't finish."
+        UploadError.REJECTED -> "The server refused this file."
+        UploadError.UNREADABLE_FILE -> "Couldn't read that file from your phone."
+        UploadError.BAD_INPUT, null -> "This one didn't finish."
     }
 }

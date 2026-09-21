@@ -2,9 +2,12 @@ package com.eeinspired.mantel.data
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.work.WorkManager
+import coil3.SingletonImageLoader
 import com.eeinspired.mantel.telemetry.Telemetry
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.eeinspired.mantel.upload.MediaStaging
+import com.eeinspired.mantel.upload.UploadWorker
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -63,8 +66,9 @@ class SessionRepository(context: Context) {
     @Volatile
     private var credentials: Credentials? = null
 
-    val username: String?
-        get() = credentials?.username ?: cache.getString(KEY_USERNAME, null)
+    /** The server's canonical uid — what the WebDAV paths are keyed by (not the typed login name). */
+    val userId: String?
+        get() = credentials?.userId ?: cache.getString(KEY_USER_ID, null)
 
     /** Last destination the user uploaded to — a pure UX convenience, never authoritative (§6/§9). */
     var lastDestinationId: String?
@@ -78,7 +82,14 @@ class SessionRepository(context: Context) {
         credentials = stored
         return when (val result = client.validateSession(stored)) {
             is ApiResult.Success -> {
-                cache.edit { putString(KEY_USERNAME, stored.username) }
+                // Installs that stored only the typed login name learn their real uid here.
+                val resolved = result.value.id.ifBlank { stored.userId }
+                val current = when (resolved) {
+                    stored.userId -> stored
+                    else -> stored.copy(userId = resolved).also(store::save)
+                }
+                credentials = current
+                cache.edit { putString(KEY_USER_ID, current.userId) }
                 Bootstrap.Ready(offlineNotice = null)
             }
             ApiResult.Unauthorized -> {
@@ -89,19 +100,20 @@ class SessionRepository(context: Context) {
             is ApiResult.NetworkError -> Bootstrap.Ready(Messages.OFFLINE_CACHED)
             is ApiResult.ServerError -> Bootstrap.Ready(Messages.SERVER_CACHED)
             is ApiResult.MalformedResponse -> {
-                reportApiDrift("bootstrap:/cloud/user", result.detail)
+                Telemetry.recordApiDrift("bootstrap:/cloud/user", result.detail)
                 Bootstrap.Ready(Messages.SERVER_CACHED)
             }
         }
     }
 
     suspend fun logIn(username: String, appPassword: String): LoginOutcome {
-        val creds = Credentials(username.trim(), appPassword)
-        return when (val result = client.validateSession(creds)) {
+        val typed = Credentials(username.trim(), appPassword)
+        return when (val result = client.validateSession(typed)) {
             is ApiResult.Success -> {
+                val creds = typed.copy(userId = result.value.id.ifBlank { typed.username })
                 store.save(creds)
                 credentials = creds
-                cache.edit { putString(KEY_USERNAME, creds.username) }
+                cache.edit { putString(KEY_USER_ID, creds.userId) }
                 Telemetry.event(Telemetry.Events.LOGIN_SUCCESS)
                 LoginOutcome.Success(result.value)
             }
@@ -122,11 +134,21 @@ class SessionRepository(context: Context) {
             }
             is ApiResult.MalformedResponse -> {
                 Telemetry.event(Telemetry.Events.LOGIN_FAILURE, mapOf("reason" to "malformed"))
-                reportApiDrift("login:/cloud/user", result.detail)
+                Telemetry.recordApiDrift("login:/cloud/user", result.detail)
                 LoginOutcome.ServerProblem(0)
             }
         }
     }
+
+    private fun currentCredentials(): Credentials? =
+        credentials ?: store.load()?.also { credentials = it }
+
+    /**
+     * A 401 on a data call can come from a proxy or rate limiter, and acting on it wipes the stored
+     * credentials. Only a failing session check proves the app password was actually revoked.
+     */
+    private suspend fun sessionRevoked(creds: Credentials): Boolean =
+        client.validateSession(creds) is ApiResult.Unauthorized
 
     fun cachedDestinations(): List<Destination> {
         val raw = cache.getString(KEY_DESTINATIONS, null) ?: return emptyList()
@@ -149,9 +171,7 @@ class SessionRepository(context: Context) {
     }
 
     suspend fun refreshDestinations(): RefreshOutcome {
-        val creds = credentials
-            ?: store.load()?.also { credentials = it }
-            ?: return RefreshOutcome.SessionExpired
+        val creds = currentCredentials() ?: return RefreshOutcome.SessionExpired
 
         return when (val result = client.listDestinations(creds)) {
             is ApiResult.Success -> {
@@ -163,11 +183,13 @@ class SessionRepository(context: Context) {
                 Telemetry.setKey("destination_count", result.value.size)
                 RefreshOutcome.Success(result.value)
             }
-            ApiResult.Unauthorized -> {
+            ApiResult.Unauthorized -> if (sessionRevoked(creds)) {
                 logOut()
                 Telemetry.event(Telemetry.Events.DESTINATIONS_REFRESH, mapOf("outcome" to "session_expired"))
                 Telemetry.event(Telemetry.Events.SESSION_REVOKED, mapOf("at" to "refresh"))
                 RefreshOutcome.SessionExpired
+            } else {
+                RefreshOutcome.ServerProblem(HTTP_UNAUTHORIZED)
             }
             is ApiResult.NetworkError -> {
                 Telemetry.event(Telemetry.Events.DESTINATIONS_REFRESH, mapOf("outcome" to "unreachable"))
@@ -182,7 +204,7 @@ class SessionRepository(context: Context) {
             }
             is ApiResult.MalformedResponse -> {
                 Telemetry.event(Telemetry.Events.DESTINATIONS_REFRESH, mapOf("outcome" to "malformed"))
-                reportApiDrift("discovery:/shares", result.detail)
+                Telemetry.recordApiDrift("discovery:/shares", result.detail)
                 RefreshOutcome.ServerProblem(0)
             }
         }
@@ -190,23 +212,23 @@ class SessionRepository(context: Context) {
 
     /** Feature-flagged gallery: list one destination folder's files. */
     suspend fun listFolder(destination: Destination): FolderOutcome {
-        val creds = credentials
-            ?: store.load()?.also { credentials = it }
-            ?: return FolderOutcome.SessionExpired
+        val creds = currentCredentials() ?: return FolderOutcome.SessionExpired
 
         return when (val result = client.listFolder(creds, destination.remotePath)) {
             is ApiResult.Success -> {
                 Telemetry.event("gallery_open", mapOf("count" to result.value.size))
                 FolderOutcome.Success(result.value)
             }
-            ApiResult.Unauthorized -> {
+            ApiResult.Unauthorized -> if (sessionRevoked(creds)) {
                 logOut()
                 FolderOutcome.SessionExpired
+            } else {
+                FolderOutcome.ServerProblem(HTTP_UNAUTHORIZED)
             }
             is ApiResult.NetworkError -> FolderOutcome.Unreachable
             is ApiResult.ServerError -> FolderOutcome.ServerProblem(result.code)
             is ApiResult.MalformedResponse -> {
-                reportApiDrift("gallery:PROPFIND", result.detail)
+                Telemetry.recordApiDrift("gallery:PROPFIND", result.detail)
                 FolderOutcome.ServerProblem(0)
             }
         }
@@ -214,42 +236,47 @@ class SessionRepository(context: Context) {
 
     /** Feature-flagged, permission-gated: delete one file from a destination folder. */
     suspend fun deleteItem(item: RemoteItem): DeleteOutcome {
-        val creds = credentials
-            ?: store.load()?.also { credentials = it }
-            ?: return DeleteOutcome.SessionExpired
+        val creds = currentCredentials() ?: return DeleteOutcome.SessionExpired
 
-        val outcome = when (val result = withContext(Dispatchers.IO) { client.deleteItem(creds, item.href) }) {
-            UploadResult.Success -> DeleteOutcome.Success
-            UploadResult.Unauthorized -> {
-                logOut()
-                DeleteOutcome.SessionExpired
-            }
-            UploadResult.Forbidden -> DeleteOutcome.Forbidden
-            UploadResult.DestinationMissing -> DeleteOutcome.AlreadyGone
-            UploadResult.QuotaExceeded -> DeleteOutcome.ServerProblem(507)
-            is UploadResult.ServerError -> DeleteOutcome.ServerProblem(result.code)
-            is UploadResult.Network -> DeleteOutcome.Unreachable
+        val (outcome, label) = when (val result = client.deleteItem(creds, item.href)) {
+            UploadResult.Success -> DeleteOutcome.Success to "success"
+            UploadResult.Unauthorized ->
+                if (sessionRevoked(creds)) {
+                    logOut()
+                    DeleteOutcome.SessionExpired to "session_expired"
+                } else {
+                    DeleteOutcome.ServerProblem(HTTP_UNAUTHORIZED) to "server_error"
+                }
+            UploadResult.Forbidden -> DeleteOutcome.Forbidden to "forbidden"
+            UploadResult.DestinationMissing -> DeleteOutcome.AlreadyGone to "already_gone"
+            UploadResult.Conflict -> DeleteOutcome.ServerProblem(HTTP_CONFLICT) to "server_error"
+            UploadResult.QuotaExceeded -> DeleteOutcome.ServerProblem(HTTP_INSUFFICIENT_STORAGE) to "server_error"
+            is UploadResult.Rejected -> DeleteOutcome.ServerProblem(result.code) to "server_error"
+            is UploadResult.ServerError -> DeleteOutcome.ServerProblem(result.code) to "server_error"
+            is UploadResult.Network -> DeleteOutcome.Unreachable to "unreachable"
         }
-        Telemetry.event(
-            "gallery_item_deleted",
-            mapOf("outcome" to outcome::class.simpleName.orEmpty()),
-        )
+        // Explicit labels: `outcome::class.simpleName` is obfuscated by R8 in release builds.
+        Telemetry.event("gallery_item_deleted", mapOf("outcome" to label))
         return outcome
     }
 
+    /**
+     * Signs out and removes everything that outlives the session: the credential, cached
+     * lists, queued/running uploads, staged copies of the user's photos, and Coil's cached
+     * thumbnails and downloads (private family photos).
+     */
     fun logOut() {
         store.clear()
         credentials = null
         cache.edit { clear() }
-    }
-
-    /**
-     * A parseable-but-unexpected server response (JSON/XML shape drift). Reported
-     * as a non-fatal so API changes on the server show up in Crashlytics rather
-     * than silently degrading to "server error". Carries no response body.
-     */
-    private fun reportApiDrift(where: String, detail: String) {
-        Telemetry.recordNonFatal(IllegalStateException("API drift at $where: $detail"))
+        WorkManager.getInstance(appContext).cancelAllWorkByTag(UploadWorker.TAG_ALL)
+        SingletonImageLoader.get(appContext).let { loader ->
+            loader.memoryCache?.clear()
+            AppScope.io.launch {
+                loader.diskCache?.clear()
+                MediaStaging.deleteAll(appContext)
+            }
+        }
     }
 
     private fun persistDestinations(destinations: List<Destination>) {
@@ -269,7 +296,10 @@ class SessionRepository(context: Context) {
     private companion object {
         const val CACHE_PREFS = "mantel_cache"
         const val KEY_DESTINATIONS = "destinations_json"
-        const val KEY_USERNAME = "username"
+        const val KEY_USER_ID = "user_id"
         const val KEY_LAST_DEST = "last_destination_id"
+        const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_CONFLICT = 409
+        const val HTTP_INSUFFICIENT_STORAGE = 507
     }
 }
