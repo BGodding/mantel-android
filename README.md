@@ -47,6 +47,6 @@ Two things aren't in the repo:
 
 ## Docs
 
-- [`docs/security.md`](docs/security.md) — threat model, hardening, remaining owner actions
+- [`docs/security.md`](docs/security.md) — threat model and hardening
 - [`docs/telemetry.md`](docs/telemetry.md) — every event / key / breadcrumb
 - [`docs/static-analysis.md`](docs/static-analysis.md) — lint, detekt, version checks

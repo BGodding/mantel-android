@@ -1,18 +1,33 @@
 package com.eeinspired.mantel.data
 
-import android.util.Base64
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
-/** Nextcloud username + app password. Never the primary login password (Requirements §4). */
-data class Credentials(val username: String, val appPassword: String) {
+/**
+ * Nextcloud login name + app password. Never the primary login password (Requirements §4).
+ *
+ * [username] is what the user typed and is used for Basic auth; [userId] is the server's
+ * canonical uid (from `/cloud/user`), which is what the WebDAV paths are keyed by — the two
+ * differ when someone logs in with an email address.
+ */
+data class Credentials(
+    val username: String,
+    val appPassword: String,
+    val userId: String = username,
+) {
     fun basicAuthHeader(): String {
         val raw = "$username:$appPassword".toByteArray(Charsets.UTF_8)
-        return "Basic " + Base64.encodeToString(raw, Base64.NO_WRAP)
+        return "Basic " + java.util.Base64.getEncoder().encodeToString(raw)
     }
+
+    // A data class prints every property; keep the secret out of logs and exception messages.
+    override fun toString(): String = "Credentials(userId=$userId, appPassword=***)"
 }
 
 data class UserInfo(val id: String, val displayName: String)
 
-/** Nextcloud permission bits (API Contract §2). */
+/** Nextcloud permission bits (API Contract §2). Complete on purpose, though not every bit is read. */
+@Suppress("unused")
 object Permission {
     const val READ = 1
     const val UPDATE = 2
@@ -33,16 +48,21 @@ data class RemoteItem(
     /** Nextcloud numeric file id, for the preview endpoint. */
     val fileId: String?,
     val hasPreview: Boolean,
+    /** Server-side upload time (`nc:upload_time`); 0 when the server doesn't report it. */
+    val uploadedEpochSeconds: Long = 0,
 ) {
+    /** When the file reached the server, falling back to its modified time. */
+    val addedEpochSeconds: Long get() = uploadedEpochSeconds.takeIf { it > 0 } ?: lastModifiedEpochSeconds
+
     val isImage: Boolean get() = contentType.startsWith("image/")
     val isVideo: Boolean get() = contentType.startsWith("video/")
 
     fun downloadUrl(): String = Config.baseUrl + href
 
     /** Nextcloud preview endpoint; null when the server reported no preview / no id. */
-    fun previewUrl(px: Int = 300): String? =
+    fun previewUrl(px: Int = PREVIEW_PX): String? =
         fileId?.takeIf { hasPreview }?.let {
-            "${Config.baseUrl}/index.php/core/preview?fileId=$it&x=$px&y=$px&a=1"
+            "${Config.baseUrl}/core/preview?fileId=$it&x=$px&y=$px&mimeFallback=true&a=0"
         }
 }
 
@@ -63,13 +83,35 @@ data class Destination(
     val canDelete: Boolean get() = permissions and Permission.DELETE != 0
 
     /** WebDAV collection URL that files are PUT into, per API Contract §2/§3. */
-    fun uploadCollectionUrl(username: String): String {
-        val segments = remotePath.trim('/').split('/')
-            .filter { it.isNotEmpty() }
-            .joinToString("/") { encodePathSegment(it) }
-        return "${Config.baseUrl}/remote.php/dav/files/$username/$segments/"
-    }
+    fun uploadCollectionUrl(userId: String): String =
+        davFolderUrl(Config.baseUrl, userId, remotePath).toString()
 }
 
-internal fun encodePathSegment(segment: String): String =
-    java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+/**
+ * `<base>/remote.php/dav/files/<userId>/<remotePath>/` — every segment percent-encoded by
+ * [HttpUrl] (a path segment, not form encoding: `+` stays literal, spaces become `%20`),
+ * with a trailing slash marking the collection.
+ */
+internal fun davFolderUrl(baseUrl: String, userId: String, remotePath: String): HttpUrl =
+    baseUrl.toHttpUrl().newBuilder()
+        .addPathSegments("remote.php/dav/files")
+        .addPathSegment(userId)
+        .apply { remotePath.split('/').filter { it.isNotEmpty() }.forEach(::addPathSegment) }
+        .addPathSegment("")
+        .build()
+
+/** Host-less resolver for server-supplied hrefs (which may be a path or an absolute URL). */
+private val HREF_RESOLVER = "https://href.invalid".toHttpUrl()
+
+/** Decoded, non-empty path segments of a server-supplied [href]. */
+internal fun hrefSegments(href: String): List<String> =
+    HREF_RESOLVER.resolve(href)?.pathSegments.orEmpty().filter { it.isNotEmpty() }
+
+/** Server-relative encoded path of [href], dropping any scheme/host a server may have included. */
+internal fun hrefPath(href: String): String = HREF_RESOLVER.resolve(href)?.encodedPath ?: href
+
+/**
+ * Grid thumbnail size. Matches what the Nextcloud web UI requests, so the server
+ * already has these cached instead of generating a new size from each full-size original.
+ */
+private const val PREVIEW_PX = 256

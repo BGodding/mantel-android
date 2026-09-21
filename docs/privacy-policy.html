@@ -260,7 +260,7 @@
     </div>
     <p class="dek">Mantel uploads the photos and videos you choose to a Nextcloud server you control. This page explains, plainly, what the app does and doesn't do with your data.</p>
     <div class="meta-row">
-      <span><b>Effective</b> September 15, 2026</span>
+      <span><b>Effective</b> September 20, 2026</span>
       <span><b>App</b> com.eeinspired.mantel</span>
       <span><b>Platform</b> Android</span>
       <span><b>Contact</b> <a href="mailto:mantel@eeinspired.com">mantel@eeinspired.com</a></span>
@@ -295,6 +295,8 @@
         <h3>Collected</h3>
         <ul>
           <li>Crash reports and device diagnostics — device model, OS version, app version, stack traces</li>
+          <li>Recent network activity, attached to a crash report — only the kind of request (for example "list shares"), the HTTP status code, and how long it took; never an address, name, or path</li>
+          <li>If your Nextcloud server ever returns something the app doesn't understand, a report of the reply's <em>structure</em> only — HTTP status, content type, size, and the names of the fields it contained (such as <code>id</code> or <code>permissions</code>), never the values in them</li>
           <li>Coarse app events — e.g. <code>login_success</code>, <code>upload_result</code> (outcome, whether it was chunked, size in MB, duration), <code>gallery_open</code> (item count)</li>
           <li>A resettable, anonymous installation identifier used to group the above</li>
         </ul>
@@ -314,7 +316,7 @@
 
   <section id="photos">
     <h2>Where your photos go</h2>
-    <p>When you share or pick a photo or video, it's copied briefly into the app's private storage on your device, uploaded directly to the Nextcloud folder you chose over an encrypted WebDAV connection, and then deleted from that private storage. The app has no photo library, no cloud storage of its own, and no server that photos pass through — the destination is whichever Nextcloud server address you (or, for a family device, whoever set it up) configured.</p>
+    <p>When you share or pick a photo or video, it's copied briefly into the app's private storage on your device, uploaded directly to the Nextcloud folder you chose over an encrypted WebDAV connection, and then deleted from that private storage. If an upload is cancelled or you sign out, any copies still waiting are deleted, along with thumbnails and photos the app cached while you browsed a frame. The app has no photo library, no cloud storage of its own, and no server that photos pass through — the destination is whichever Nextcloud server address you (or, for a family device, whoever set it up) configured.</p>
   </section>
 
   <section id="permissions">

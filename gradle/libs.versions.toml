@@ -1,24 +1,26 @@
 [versions]
-agp = "9.4.0"
+agp = "9.4.1"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-kotlin = "2.2.10"
+kotlin = "2.4.20"
 composeBom = "2026.09.00"
 googleServices = "4.5.0"
 firebaseCrashlyticsPlugin = "3.0.8"
 firebaseBom = "34.19.0"
 workManager = "2.11.2"
 okhttp = "5.5.0"
-coil = "3.3.0"  # 3.5+ requires kotlin-stdlib 2.4, newer than this toolchain's compiler (2.2)
+coil = "3.6.2"
 benManesVersions = "0.63.1"
 fragment = "1.9.0"  # transitive-only, via play-services-basement — Play Console flagged 1.1.0 as outdated
 media3 = "1.11.1"
 detekt = "1.23.8"
 composeLintChecks = "1.6.0"
+orgJson = "20260814"
+kxml2 = "2.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +44,7 @@ firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics
 firebase-config = { group = "com.google.firebase", name = "firebase-config" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
@@ -50,6 +53,8 @@ androidx-fragment = { group = "androidx.fragment", name = "fragment", version.re
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
+kxml2 = { group = "net.sf.kxml", name = "kxml2", version.ref = "kxml2" }
 compose-lint-checks = { group = "com.slack.lint.compose", name = "compose-lint-checks", version.ref = "composeLintChecks" }
 
 [plugins]

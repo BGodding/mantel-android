@@ -25,12 +25,14 @@ import androidx.compose.ui.unit.dp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.eeinspired.mantel.data.Messages
+import com.eeinspired.mantel.data.UploadError
 import com.eeinspired.mantel.upload.UploadWorker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadStatusScreen(
     batchTag: String,
+    skipped: Int,
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -63,6 +65,15 @@ fun UploadStatusScreen(
                 style = MaterialTheme.typography.titleMedium,
             )
 
+            if (skipped > 0) {
+                Text(
+                    text = "$skipped ${if (skipped == 1) "file" else "files"} couldn't be prepared " +
+                        "(too large, unreadable, or your phone is out of space) and won't be sent.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -88,7 +99,7 @@ private fun UploadRow(info: WorkInfo) {
         WorkInfo.State.RUNNING -> "Uploading…" to false
         WorkInfo.State.SUCCEEDED -> "Sent" to false
         WorkInfo.State.FAILED ->
-            Messages.uploadError(info.outputData.getString(UploadWorker.KEY_ERROR_KIND)) to true
+            Messages.uploadError(UploadError.from(info.outputData.getString(UploadWorker.KEY_ERROR_KIND))) to true
         WorkInfo.State.CANCELLED -> "Cancelled" to true
     }
 

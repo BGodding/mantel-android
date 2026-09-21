@@ -12,7 +12,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 object NextcloudImageLoader {
 
     fun create(context: Context): ImageLoader {
-        val client = NextcloudHttpClient.create(context)
+        val client = NextcloudHttpClient.get(context)
         return ImageLoader.Builder(context.applicationContext)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
             .build()

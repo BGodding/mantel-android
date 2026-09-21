@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    open-pull-requests-limit: 5
+    ignore:
+      # Pinned: newer Coil needs a newer Kotlin than the project's toolchain (see libs.versions.toml).
+      - dependency-name: "io.coil-kt.coil3:*"
+    groups:
+      androidx-compose:
+        patterns: ["androidx.compose*"]
+      firebase:
+        patterns: ["com.google.firebase*", "com.google.gms*"]
+      media3:
+        patterns: ["androidx.media3*"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }

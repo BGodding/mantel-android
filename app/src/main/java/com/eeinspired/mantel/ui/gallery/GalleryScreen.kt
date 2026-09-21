@@ -4,9 +4,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,7 +18,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -27,11 +32,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +64,7 @@ fun GalleryScreen(
     canDelete: Boolean,
     onOpenItem: (RemoteItem) -> Unit,
     onBack: () -> Unit,
+    refreshToken: Int = 0,
     onSignedOut: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -64,6 +72,9 @@ fun GalleryScreen(
     var loading by remember { mutableStateOf(true) }
     var loadedOnce by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var filter by rememberSaveable { mutableStateOf(MediaFilter.ALL) }
+    var sort by rememberSaveable { mutableStateOf(GallerySort.RECENTLY_ADDED) }
+    val visibleItems by remember { derivedStateOf { items.filteredAndSorted(filter, sort) } }
     var pendingDelete by remember { mutableStateOf<RemoteItem?>(null) }
     var deleteBusy by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -89,7 +100,7 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(destination.id) { load() }
+    LaunchedEffect(destination.id, refreshToken) { load() }
 
     Scaffold(
         topBar = {
@@ -107,7 +118,12 @@ fun GalleryScreen(
             notice = notice,
             loading = loading,
             loadedOnce = loadedOnce,
-            items = items,
+            items = visibleItems,
+            hasAnyItems = items.isNotEmpty(),
+            filter = filter,
+            sort = sort,
+            onFilterChange = { filter = it },
+            onSortChange = { sort = it },
             canDelete = canDelete,
             onOpenItem = onOpenItem,
             onRequestDelete = { pendingDelete = it },
@@ -149,6 +165,11 @@ private fun GalleryContent(
     loading: Boolean,
     loadedOnce: Boolean,
     items: List<RemoteItem>,
+    hasAnyItems: Boolean,
+    filter: MediaFilter,
+    sort: GallerySort,
+    onFilterChange: (MediaFilter) -> Unit,
+    onSortChange: (GallerySort) -> Unit,
     canDelete: Boolean,
     onOpenItem: (RemoteItem) -> Unit,
     onRequestDelete: (RemoteItem) -> Unit,
@@ -162,14 +183,22 @@ private fun GalleryContent(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        if (loadedOnce && items.isNotEmpty()) {
-            Text(
-                text = "${items.size} ${if (items.size == 1) "item" else "items"}" +
-                    if (canDelete) " · long-press to remove" else "",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        if (loadedOnce && hasAnyItems) {
+            GalleryFilterBar(
+                filter = filter,
+                sort = sort,
+                countLabel = "${items.size} ${if (items.size == 1) "item" else "items"}",
+                onFilterChange = onFilterChange,
+                onSortChange = onSortChange,
             )
+            if (canDelete) {
+                Text(
+                    text = "Long-press a photo to remove it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
 
         when {
@@ -178,7 +207,7 @@ private fun GalleryContent(
 
             items.isEmpty() && loadedOnce ->
                 Text(
-                    text = "This frame has no photos yet.",
+                    text = if (hasAnyItems) "Nothing matches this filter." else "This frame has no photos yet.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -194,6 +223,46 @@ private fun GalleryContent(
                         onClick = { onOpenItem(item) },
                         onLongClick = if (canDelete) ({ onRequestDelete(item) }) else null,
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryFilterBar(
+    filter: MediaFilter,
+    sort: GallerySort,
+    countLabel: String,
+    onFilterChange: (MediaFilter) -> Unit,
+    onSortChange: (GallerySort) -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MediaFilter.entries.forEach {
+                FilterChip(selected = filter == it, onClick = { onFilterChange(it) }, label = { Text(it.label) })
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = countLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+            )
+            Box {
+                TextButton(onClick = { menuOpen = true }) { Text("Sort: ${sort.label}") }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    GallerySort.entries.forEach {
+                        DropdownMenuItem(
+                            text = { Text(it.label) },
+                            onClick = {
+                                onSortChange(it)
+                                menuOpen = false
+                            },
+                        )
+                    }
                 }
             }
         }

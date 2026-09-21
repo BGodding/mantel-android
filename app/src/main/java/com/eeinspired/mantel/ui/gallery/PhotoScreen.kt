@@ -3,10 +3,14 @@ package com.eeinspired.mantel.ui.gallery
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,7 +47,7 @@ fun PhotoScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val httpClient = remember { NextcloudHttpClient.create(context) }
+    val httpClient = remember { NextcloudHttpClient.get(context) }
     var confirming by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -114,10 +118,16 @@ fun PhotoScreen(
 private fun PhotoTopBar(title: String, canDelete: Boolean, onBack: () -> Unit, onDeleteRequested: () -> Unit) {
     TopAppBar(
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = { TextButton(onClick = onBack) { Text("Back", color = Color.White) } },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+        },
         actions = {
             if (canDelete) {
-                TextButton(onClick = onDeleteRequested) { Text("Delete", color = Color.White) }
+                IconButton(onClick = onDeleteRequested) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete photo", tint = Color.White)
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White),

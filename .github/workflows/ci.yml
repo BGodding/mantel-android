@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Catches a compromised/tampered gradle-wrapper.jar (docs/security.md #12).
+      # Catches a compromised/tampered gradle-wrapper.jar (docs/security.md, "Build and release integrity").
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
 
@@ -57,6 +57,22 @@ jobs:
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
+
+      # Proves the R8-shrunk release build still compiles and shrinks — R8 problems otherwise
+      # only surface at runtime. Signed with a throwaway key generated here (never a real one) and
+      # built against the example server config, which is why it opts in to allowExampleSecrets.
+      # The Crashlytics mapping upload is skipped: CI has no real Firebase project to upload to.
+      - name: Assemble release (R8 check)
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -alias ci -keyalg RSA -keysize 2048 \
+            -validity 2 -storepass ci-throwaway -keypass ci-throwaway -dname "CN=ci"
+          cat > keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/ci.jks
+          storePassword=ci-throwaway
+          keyAlias=ci
+          keyPassword=ci-throwaway
+          EOF
+          ./gradlew assembleRelease -x uploadCrashlyticsMappingFileRelease -PallowExampleSecrets=true --stacktrace
 
       - name: Upload reports
         if: always()
